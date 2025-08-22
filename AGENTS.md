@@ -92,6 +92,27 @@ Rules:
 Edge cases:
 
 - If `handler` calls `next()`, processing continues (rare—prefer return response).
+
+### 4.1 Rule Organization & Archival Strategy
+
+The loader (`fast-glob` with `dot: false`) ignores dot-prefixed files/folders. Use this to manage groups:
+
+| Use case                | Action / Convention                                        |
+| ----------------------- | ----------------------------------------------------------- |
+| Group related rules     | Place them in a subfolder (`rules/commerce/`, etc.)         |
+| Temporarily disable set | Rename folder to start with `.` (`rules/.demo-pack/`)       |
+| Archive old packs       | Move into `rules/.trash/<name>/` (dot keeps it ignored)     |
+| Restore pack            | Move back / remove leading dot                              |
+| Personal scratch        | `rules/.wip/` (also add to `.gitignore` if desired)         |
+
+No runtime registry is needed—folder naming alone controls inclusion. This keeps the import loop trivial and diff-friendly.
+
+Guidelines:
+
+- Keep rule code free of secrets so it can be committed & shared.
+- Use stable `name` properties for log clarity.
+- Prefer one concern per file; large scenario packs can have many small files rather than one mega handler.
+- Prune stale archives periodically to reduce noise.
 - Exceptions inside rule → 500 JSON `{ error: "override_failed" }`.
 
 ---

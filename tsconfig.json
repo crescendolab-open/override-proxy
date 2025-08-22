@@ -14,15 +14,6 @@
     // "noUncheckedIndexedAccess": false,
     // "checkJs": false
   },
-  "include": [
-    "**/*.ts",
-    "rules/featureControls.ts",
-    "rules/org1Details.ts",
-    "rules/orgMe.ts",
-    "rules/teamsMe.ts",
-    "rules/traceLink.ts",
-    "rules/user121.ts",
-    "rules/utmSetting.ts"
-  ],
+  "include": ["**/*.ts"],
   "exclude": ["node_modules"]
 }

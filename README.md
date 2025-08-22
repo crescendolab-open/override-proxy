@@ -20,8 +20,9 @@ Key features:
 8. Common Scenarios
 9. Security Notes
 10. Extension Ideas
-11. Comparison with MSW
-12. License
+11. Rule Organization & Archival
+12. Comparison with MSW
+13. License
 
 ## 1. Quick Start
 
@@ -214,7 +215,67 @@ Header trigger: `test: (req)=> req.headers["x-mock-mode"] === "1"`
 | Stats                   | hit count / last hit timestamp   |
 | Priority control        | Explicit rule ordering           |
 
-## 11. Comparison with MSW
+## 11. Rule Organization & Archival
+
+You can treat `rules/` as a shared, modular catalog of partial overrides. Simple conventions keep it clean and make whole scenario packs easy to toggle.
+
+### 11.1 Group Related Rules
+
+- Put feature / domain / scenario rules in a folder: `rules/commerce/`, `rules/demo-onboarding/`, `rules/experiments/ab-test-1/`.
+- This shortens filenames and allows group operations (disable, move, review).
+
+### 11.2 Disable an Entire Group (Dot‑prefix)
+
+The loader ignores dotfiles & dotfolders. Rename a folder to start with `.` to deactivate every rule inside without deleting them:
+
+```text
+rules/demo-onboarding/    # active
+rules/.demo-onboarding/   # inactive (ignored)
+```
+
+Remove the leading dot to reactivate.
+
+### 11.3 Archive Packs in `.trash`
+
+Move old / seldom used sets into `rules/.trash/<pack>/`. Because `.trash` begins with a dot, all contents are ignored.
+
+```text
+rules/.trash/legacy-campaign/*
+```
+
+Bring them back by moving the folder out (and removing any leading dot).
+
+### 11.4 Shareable by Design
+
+- Committed (non-sensitive) rule files are instantly shared—teammates restart and get the same overrides.
+- Avoid secrets / PII in responses. Use env vars or synthetic placeholders if needed.
+- Scenario-oriented packs let you prepare multiple demo states and enable exactly one (or a few) by folder name.
+
+### 11.5 Personal / WIP Rules
+
+- For scratch work you _do not_ want loaded or committed, use a dot-prefixed folder: `rules/.wip/`.
+- Optionally list it in `.gitignore` so accidental commits are avoided.
+
+### 11.6 Naming Guidance
+
+- Folder names: concise, kebab-case domain or scenario (`billing-refunds`, `chat-surge-test`).
+- Rule `name` (shown in logs): stable identifier (PascalCase or kebab-case) reflecting purpose.
+
+### 11.7 Quick Lifecycle Table
+
+| Action           | Steps                                 |
+| ---------------- | ------------------------------------- |
+| Add feature pack | Create folder, add rule files, commit |
+| Temporarily hide | Rename folder to `.folderName`        |
+| Archive          | Move into `rules/.trash/<folder>`     |
+| Restore          | Move back / remove leading dot        |
+| Share            | Push & teammates restart proxy        |
+
+### 11.8 Why Folders over Config Flags?
+
+This keeps the runtime loader trivial (no registry/state) while still giving coarse-grained enable/disable. Git diffs also remain obvious.
+
+## 12. Comparison with MSW
 
 `override-proxy` and [MSW](https://mswjs.io/) both solve API interception/mocking but sit at different layers: this project is a standalone reverse proxy that applies override rules first and transparently forwards the rest; MSW runs inside your runtime (Service Worker in the browser or a Node process). They are often complementary (team‑wide shared partial overrides via `override-proxy`; fully deterministic isolated tests & Storybook via MSW).
 
@@ -292,7 +353,7 @@ sequenceDiagram
   MSW-->>DevApp: Deterministic mocked JSON
 ```
 
-## 12. License
+## 13. License
 
 Apache License 2.0 © 2025 Crescendo Lab. See `LICENSE` for full text.
 
