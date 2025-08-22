@@ -60,7 +60,11 @@ Never hardcode secrets. Place sensitive values only in `.env.local`. Keep `.env.
 
 ## 4. Rule System Quick Reference
 
-Rules are loaded from `rules/**/*.ts|js` (excluding `.d.ts`, dotfiles). Each rule object (from default export, `rules` array, or multiple named exports) must provide:
+Rules are loaded from `rules/**/*.ts|js` (excluding `.d.ts`, dotfiles). All exports are inspected:
+
+- Named exports whose value is an `OverrideRule` (or an array of them) are included.
+- Legacy patterns: default export (single or array) and a `rules` named array are still supported.
+- Export identifier overrides any internal `name` passed to `rule()` (the `name` option is deprecated—omit it).
 
 ```ts
 interface OverrideRule {
@@ -68,11 +72,15 @@ interface OverrideRule {
   enabled?: boolean; // default true
   methods: [Method, ...Method[]]; // non-empty
   test(req: Request): boolean;
-  handler(req: Request, res: Response, next: NextFunction): void | Promise<void>;
+  handler(
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ): void | Promise<void>;
 }
 ```
 
-Helper `rule()` forms:
+Helper `rule()` forms (name option removed):
 
 ```ts
 // Overload form
@@ -87,7 +95,7 @@ Rules:
 - Provide path or test (one required)
 - methods default to ["GET"] in config form; required explicitly in overload form
 - First matching enabled rule short-circuits
-
+- Export name becomes log/display name; omit `name` option
 
 Edge cases:
 
@@ -97,13 +105,13 @@ Edge cases:
 
 The loader (`fast-glob` with `dot: false`) ignores dot-prefixed files/folders. Use this to manage groups:
 
-| Use case                | Action / Convention                                        |
-| ----------------------- | ----------------------------------------------------------- |
-| Group related rules     | Place them in a subfolder (`rules/commerce/`, etc.)         |
-| Temporarily disable set | Rename folder to start with `.` (`rules/.demo-pack/`)       |
-| Archive old packs       | Move into `rules/.trash/<name>/` (dot keeps it ignored)     |
-| Restore pack            | Move back / remove leading dot                              |
-| Personal scratch        | `rules/.wip/` (also add to `.gitignore` if desired)         |
+| Use case                | Action / Convention                                     |
+| ----------------------- | ------------------------------------------------------- |
+| Group related rules     | Place them in a subfolder (`rules/commerce/`, etc.)     |
+| Temporarily disable set | Rename folder to start with `.` (`rules/.demo-pack/`)   |
+| Archive old packs       | Move into `rules/.trash/<name>/` (dot keeps it ignored) |
+| Restore pack            | Move back / remove leading dot                          |
+| Personal scratch        | `rules/.wip/` (also add to `.gitignore` if desired)     |
 
 No runtime registry is needed—folder naming alone controls inclusion. This keeps the import loop trivial and diff-friendly.
 

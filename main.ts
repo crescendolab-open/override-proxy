@@ -12,7 +12,7 @@ import url from "node:url";
 import { join, dirname } from "pathe";
 import fg from "fast-glob";
 import fsExtra from "fs-extra";
-import { OverrideRule, normalizeModule } from "./utils.js";
+import { OverrideRule, isOverrideRule, OverrideRuleMeta } from "./utils.js";
 import getPort from "get-port";
 
 // ----------------------------------------------------------------------------
@@ -33,6 +33,7 @@ const rulesDir = join(__dirname, "rules");
 // Ensure rules directory exists (allow empty project start)
 await fsExtra.ensureDir(rulesDir);
 const overrides: OverrideRule[] = [];
+const metaMap = new WeakMap<OverrideRule, OverrideRuleMeta>();
 // Glob pattern: ts/js (skip .d.ts & dotfiles)
 const entries = await fg(["**/*.ts", "**/*.js"], {
   cwd: rulesDir,
@@ -42,8 +43,46 @@ const entries = await fg(["**/*.ts", "**/*.js"], {
 for (const rel of entries) {
   const full = join(rulesDir, rel);
   try {
-    const mod = await import(full);
-    overrides.push(...normalizeModule(mod));
+    const mod: any = await import(full);
+    type Collected = { rule: OverrideRule; exportName?: string };
+    const collected: Collected[] = [];
+
+    // Legacy default (rule or array of rules)
+    if (mod.default) {
+      if (Array.isArray(mod.default)) {
+        for (const item of mod.default)
+          if (isOverrideRule(item)) collected.push({ rule: item });
+      } else if (isOverrideRule(mod.default)) {
+        collected.push({ rule: mod.default });
+      }
+    }
+    // Legacy named 'rules'
+    if (Array.isArray(mod.rules)) {
+      for (const item of mod.rules)
+        if (isOverrideRule(item)) collected.push({ rule: item });
+    }
+    // Named exports
+    for (const [key, val] of Object.entries(mod)) {
+      if (key === "default" || key === "rules") continue;
+      if (isOverrideRule(val)) collected.push({ rule: val, exportName: key });
+      else if (Array.isArray(val)) {
+        for (const item of val)
+          if (isOverrideRule(item))
+            collected.push({ rule: item, exportName: key });
+      }
+    }
+    // Finalize & store metadata
+    for (const { rule: rOriginal, exportName } of collected) {
+      let r = rOriginal;
+      if (exportName && !r.name) {
+        if (!Object.isExtensible(r) || Object.isFrozen(r))
+          r = { ...r } as OverrideRule;
+        r.name = exportName;
+      }
+      const id = `${rel}${exportName ? ":" + exportName : ""}`;
+      metaMap.set(r, { file: rel, export: exportName, id });
+      overrides.push(r);
+    }
   } catch (e) {
     console.error("Failed loading rule module", rel, e);
   }
@@ -77,8 +116,11 @@ function fmtStatus(status?: number) {
 function logRequestStart(id: number, method: string, url: string) {
   console.log(chalk.gray(`[${id}] -> ${method} ${url}`));
 }
-function logRequestMatch(id: number, match: string) {
-  console.log(chalk.cyan(`[${id}] match ${match}`));
+function logRequestMatch(id: number, match: string, meta?: OverrideRuleMeta) {
+  const extra = meta?.file
+    ? ` (${meta.file}${meta?.export ? ":" + meta.export : ""})`
+    : "";
+  console.log(chalk.cyan(`[${id}] match ${match}${extra}`));
 }
 function logRequestEnd(
   id: number,
@@ -151,7 +193,11 @@ app.use(async (req, res, next) => {
       if (rule.test(req)) {
         (res as any)._via = "override";
         (res as any)._matched = rule.name;
-        logRequestMatch((res as any)._logId, rule.name || "override");
+        logRequestMatch(
+          (res as any)._logId,
+          rule.name || "override",
+          metaMap.get(rule),
+        );
         await rule.handler(req, res, next);
         return; // Stop at first match
       }
@@ -170,7 +216,7 @@ app.use(
   createProxyMiddleware({
     target: TARGET,
     changeOrigin: true,
-  // http-proxy-middleware v3: events via on{}
+    // http-proxy-middleware v3: events via on{}
     on: {
       proxyReq: (_proxyReq, req: any) => {
         (req.res as any)._via = "proxy";
@@ -205,12 +251,15 @@ async function startServer() {
     console.log(`Server listening http://localhost:${port}`);
     console.log(`Target: ${TARGET}`);
     console.log(
-      `Overrides: ${overrides
-        .map(
-          (r) =>
-            `${r.name || "<unnamed>"}${r.enabled === false ? " (off)" : ""}`,
-        )
-        .join(", ")}`,
+      `Overrides:\n${overrides
+        .map((r) => {
+          const meta = metaMap.get(r);
+          const src = meta
+            ? `${meta.file}${meta.export ? ":" + meta.export : ""}`
+            : "?";
+          return `  - ${r.name || "<unnamed>"}${r.enabled === false ? " (off)" : ""} :: ${src}`;
+        })
+        .join("\n")}`,
     );
   });
 }

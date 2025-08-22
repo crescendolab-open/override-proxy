@@ -97,9 +97,12 @@ Constraints:
 
 Export patterns:
 
-1. `export default rule(...)`
-1. `export const rules = [ rule(...), ... ]`
-1. Multiple plain objects each with `test` & `handler` (discouraged unless custom logic per object)
+1. `export const SomeRule = rule(...)` (recommended; export name becomes rule name)
+2. Multiple named exports per file (all collected)
+3. Legacy: `export default rule(...)` or `export const rules = [ rule(...), ... ]` (still supported)
+4. Any other named export that is an `OverrideRule` (or an array of them) will be loaded.
+
+> Naming: when using named exports, the export identifier overrides any `name` set inside `rule()` options (the `name` option is deprecated).
 
 ## 4. Examples
 
@@ -221,8 +224,8 @@ You can treat `rules/` as a shared, modular catalog of partial overrides. Simple
 
 ### 11.1 Group Related Rules
 
-- Put feature / domain / scenario rules in a folder: `rules/commerce/`, `rules/demo-onboarding/`, `rules/experiments/ab-test-1/`.
-- This shortens filenames and allows group operations (disable, move, review).
+- Group by feature / domain / scenario using either subfolders _and/or_ multi-export files.
+- Example: consolidate stable org endpoints into `rules/commerce/org1.ts` with several named exports, and chat endpoints into `rules/commerce/chat.ts`.
 
 ### 11.2 Disable an Entire Group (Dot‑prefix)
 

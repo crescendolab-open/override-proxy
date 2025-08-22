@@ -1,11 +1,18 @@
 import type { Method, MethodList, RuleHandler, RuleTest } from "./types.js";
 
 export interface OverrideRule {
-  name?: string;       // identifier (for logs)
-  enabled?: boolean;   // default true
+  name?: string; // identifier (for logs). Will be overridden by export name if present.
+  enabled?: boolean; // default true
   methods: MethodList; // non-empty
   test: RuleTest;
   handler: RuleHandler;
+}
+
+// Internal metadata kept separately (not attached directly to the rule object)
+export interface OverrideRuleMeta {
+  file: string; // relative file path of rule provider
+  export?: string | undefined; // export key (undefined for legacy/default)
+  id: string; // synthesized id: <relPath>[:export]
 }
 
 // Config form accepted by rule(): rule({ path?, test?, methods?, ... }).
@@ -27,7 +34,7 @@ export function rule(
   method: Method | Method[],
   path: string | RegExp,
   handler: RuleHandler,
-  options?: { name?: string; enabled?: boolean },
+  options?: { enabled?: boolean }, // name removed: export name now authoritative
 ): OverrideRule;
 export function rule(config: RuleConfig): OverrideRule;
 export function rule(
@@ -45,9 +52,9 @@ export function rule(
   ) {
     const cfg = a as RuleConfig;
     const enabled = cfg.enabled !== false;
-    const methods = ((cfg.methods && cfg.methods.length ? cfg.methods : ["GET"]) as Method[]).map(
-      (m) => m.toUpperCase() as Method,
-    ) as MethodList;
+    const methods = (
+      (cfg.methods && cfg.methods.length ? cfg.methods : ["GET"]) as Method[]
+    ).map((m) => m.toUpperCase() as Method) as MethodList;
     const hasPath = cfg.path != null;
     if (!hasPath && typeof cfg.test !== "function") {
       throw new Error("rule(config) requires either path or test");
@@ -83,7 +90,7 @@ export function rule(
   const method = a as Method | Method[];
   const path = b as string | RegExp;
   const handler = c as OverrideRule["handler"];
-  const options = d;
+  const options = d as { enabled?: boolean } | undefined;
   const methods = (Array.isArray(method) ? method : [method]).map(
     (m) => m.toUpperCase() as Method,
   ) as MethodList;
@@ -91,7 +98,7 @@ export function rule(
   const isString = typeof path === "string";
   const regex = isString ? null : (path as RegExp);
   return {
-    name: options?.name || (isString ? (path as string) : path.toString()),
+    name: isString ? (path as string) : path.toString(),
     enabled,
     methods,
     test: (req) => {
@@ -104,6 +111,7 @@ export function rule(
   };
 }
 
+// Legacy export normalization kept for backward compatibility (not used by loader anymore)
 export type RulesModule =
   | { default?: OverrideRule | OverrideRule[]; rules?: OverrideRule[] }
   | OverrideRule
@@ -117,4 +125,14 @@ export function normalizeModule(m: RulesModule): OverrideRule[] {
     return Array.isArray(d) ? d : [d];
   }
   return [m as OverrideRule];
+}
+
+export function isOverrideRule(obj: any): obj is OverrideRule {
+  return (
+    !!obj &&
+    typeof obj === "object" &&
+    typeof obj.test === "function" &&
+    typeof obj.handler === "function" &&
+    Array.isArray(obj.methods)
+  );
 }
