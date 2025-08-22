@@ -41,8 +41,11 @@ coverage
 *.local.*
 
 # Optional: ignore rules directory if generated externally
-/rules/*
-!rules/_demo.ts
+/rules/**/*
+!/rules/_demo.ts
+# Re-include all directories so that specific files (e.g. .gitkeep) can be unignored.
+!/rules/**/
+!/rules/**/.gitkeep
 
 # TypeScript cache
 *.tsbuildinfo
