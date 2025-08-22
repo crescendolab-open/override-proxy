@@ -1,0 +1,19 @@
+{
+  "extends": [
+    "@tsconfig/node24/tsconfig.json",
+    "@tsconfig/strictest/tsconfig.json"
+  ],
+  "compilerOptions": {
+    // Keep NodeNext semantics for ESM (.js extension imports)
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    // Allow JSON imports as before
+    "resolveJsonModule": true
+    // We rely on base strictness; if any rule is too aggressive can override here.
+    // Example relaxations (commented):
+    // "noUncheckedIndexedAccess": false,
+    // "checkJs": false
+  },
+  "include": ["**/*.ts"],
+  "exclude": ["node_modules"]
+}
