@@ -12,18 +12,18 @@ Key features:
 
 `override-proxy` and [MSW](https://mswjs.io/) both solve API interception/mocking but sit at different layers: this project is a standalone reverse proxy that applies override rules first and transparently forwards the rest; MSW runs inside your runtime (Service Worker in the browser or a Node process). They are often complementary (team‑wide shared partial overrides via `override-proxy`; fully deterministic isolated tests & Storybook via MSW).
 
-| Aspect | override-proxy | MSW | When to favor override-proxy | When to favor MSW |
-| ------ | -------------- | --- | ---------------------------- | ----------------- |
-| Deployment form | Standalone Node reverse proxy | In-process (Service Worker / Node) | Need one shared layer for Web, Mobile, backend scripts | Only JS app/tests, want zero base URL changes |
-| Override strategy | First matching rule short-circuits, rest passthrough | All requests potentially intercepted; passthrough needs opting in | Partial mock + keep real behavior for the rest | Fully controlled, offline, deterministic data |
-| Upstream realism | Unmatched hits real upstream (reduced mock drift) | All data must be defined/generative | Want to reduce divergence between mock and prod | Want fully stable replayable fixtures |
-| Team sharing | Point base URL; everyone instantly uses same overrides | Must add handlers per repo | Fast alignment “what’s overridden today” | Single codebase control is enough |
-| Client languages | Any (JS, iOS, Android, backend) via HTTP | Primarily JavaScript ecosystems | Multi-language integration workflows | Pure JS/UI workflows |
-| Logging & observability | Centralized request log (latency, status, source, rule) | Distributed per environment | Need mixed real+mock traffic insight | Local test verbosity sufficient |
-| CORS / network semantics | Real browser/network semantics preserved | Simulated inside SW/Node | Need to validate real cookies/CORS/TLS | Network realism not required |
-| Adoption cost | Run one process + point base URL | Install lib + configure handlers in each env | Want zero code intrusion | Prefer inline mocks in tests |
-| Extensibility surface | Natural spot for caching, record/replay, fault/latency injection | Built-in REST/GraphQL/WebSocket already | Need proxy aggregation / caching | Need protocol breadth immediately |
-| Non-JS test integration | Any stack via HTTP | Requires JS runtime | Mixed polyglot E2E | JS-only test matrix |
+| Aspect                   | override-proxy                                                   | MSW                                                               | When to favor override-proxy                           | When to favor MSW                             |
+| ------------------------ | ---------------------------------------------------------------- | ----------------------------------------------------------------- | ------------------------------------------------------ | --------------------------------------------- |
+| Deployment form          | Standalone Node reverse proxy                                    | In-process (Service Worker / Node)                                | Need one shared layer for Web, Mobile, backend scripts | Only JS app/tests, want zero base URL changes |
+| Override strategy        | First matching rule short-circuits, rest passthrough             | All requests potentially intercepted; passthrough needs opting in | Partial mock + keep real behavior for the rest         | Fully controlled, offline, deterministic data |
+| Upstream realism         | Unmatched hits real upstream (reduced mock drift)                | All data must be defined/generative                               | Want to reduce divergence between mock and prod        | Want fully stable replayable fixtures         |
+| Team sharing             | Point base URL; everyone instantly uses same overrides           | Must add handlers per repo                                        | Fast alignment “what’s overridden today”               | Single codebase control is enough             |
+| Client languages         | Any (JS, iOS, Android, backend) via HTTP                         | Primarily JavaScript ecosystems                                   | Multi-language integration workflows                   | Pure JS/UI workflows                          |
+| Logging & observability  | Centralized request log (latency, status, source, rule)          | Distributed per environment                                       | Need mixed real+mock traffic insight                   | Local test verbosity sufficient               |
+| CORS / network semantics | Real browser/network semantics preserved                         | Simulated inside SW/Node                                          | Need to validate real cookies/CORS/TLS                 | Network realism not required                  |
+| Adoption cost            | Run one process + point base URL                                 | Install lib + configure handlers in each env                      | Want zero code intrusion                               | Prefer inline mocks in tests                  |
+| Extensibility surface    | Natural spot for caching, record/replay, fault/latency injection | Built-in REST/GraphQL/WebSocket already                           | Need proxy aggregation / caching                       | Need protocol breadth immediately             |
+| Non-JS test integration  | Any stack via HTTP                                               | Requires JS runtime                                               | Mixed polyglot E2E                                     | JS-only test matrix                           |
 
 ### Key strengths of this project
 
@@ -52,14 +52,14 @@ flowchart LR
     A[Request]
   end
   A --> B[override-proxy]
-  B -->|First matching rule| C[Override Handler\n(dynamic JSON / delay / error)]
-  B -->|No rule matched| U[(Upstream API)]
+  B -->|rule match| C[Override handler]
+  B -->|no match| U[(Upstream API)]
   C --> R[Response]
   U --> R
   R --> A
-
-  classDef override fill=#0d6efd,stroke=#084298,stroke-width=1,color=#fff;
-  class B override;
+  %% Behaviors: dynamic JSON, latency, error injection
+  classDef proxy fill:#0d6efd,stroke:#084298,stroke-width:1px,color:#fff;
+  class B proxy;
 ```
 
 ### Complementary Usage with MSW
@@ -140,10 +140,14 @@ Interface:
 ```ts
 interface OverrideRule {
   name?: string;
-  enabled?: boolean;      // default true
+  enabled?: boolean; // default true
   methods: [Method, ...Method[]]; // non-empty, uppercase
   test(req: Request): boolean;
-  handler(req: Request, res: Response, next: NextFunction): void | Promise<void>;
+  handler(
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ): void | Promise<void>;
 }
 ```
 
