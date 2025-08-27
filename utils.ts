@@ -26,10 +26,6 @@ export interface RuleConfig {
   handler: RuleHandler;
 }
 
-export function escapeRegExp(str: string) {
-  return str.replace(/[$()*+.?[\\]^{|}]/g, "\\$&");
-}
-
 export function rule(
   method: Method | Method[],
   path: string | RegExp,
