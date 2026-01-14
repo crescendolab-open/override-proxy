@@ -36,25 +36,6 @@ info() {
   echo -e "${BLUE}ℹ $1${NC}"
 }
 
-# Check for uncommitted changes in a directory
-check_uncommitted_changes() {
-  local dir=$1
-  if [ -d ".git" ] && git ls-files --error-unmatch "$dir" >/dev/null 2>&1; then
-    if ! git diff --quiet "$dir" || ! git diff --cached --quiet "$dir"; then
-      warning "Directory '$dir' has uncommitted changes."
-      echo -e "${YELLOW}Suggestions:${NC}"
-      echo "  • Commit: git add $dir && git commit -m 'message'"
-      echo "  • Stash: git stash push -m 'temp' $dir"
-      echo ""
-      read -p "Continue anyway? (y/N): " -n 1 -r
-      echo
-      if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        error "Operation cancelled by user."
-      fi
-    fi
-  fi
-}
-
 # List all rule groups
 list_groups() {
   echo "Rule Groups:"
@@ -103,9 +84,6 @@ disable_group() {
     error "Disabled group '.$group' already exists. Enable or delete it first."
   fi
 
-  # Safety check for uncommitted changes
-  check_uncommitted_changes "$source"
-
   mv "$source" "$target"
   success "Disabled $group/ → .$group/"
   warning "Restart server for changes to take effect: pnpm dev"
@@ -128,9 +106,6 @@ enable_group() {
     error "Active group '$group' already exists. Disable or delete it first."
   fi
 
-  # Safety check for uncommitted changes
-  check_uncommitted_changes "$source"
-
   mv "$source" "$target"
   success "Enabled .$group/ → $group/"
   warning "Restart server for changes to take effect: pnpm dev"
@@ -152,9 +127,6 @@ archive_group() {
   if [ -d "$target" ]; then
     error "Group '$group' already archived. Delete it first or use a different name."
   fi
-
-  # Safety check for uncommitted changes
-  check_uncommitted_changes "$source"
 
   mv "$source" "$target"
   success "Archived $group/ → .trash/$group/"

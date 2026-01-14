@@ -239,7 +239,22 @@ You can treat `rules/` as a shared, modular catalog of partial overrides. Simple
 - Group by feature / domain / scenario using either subfolders _and/or_ multi-export files.
 - Example: consolidate stable org endpoints into `rules/commerce/org1.ts` with several named exports, and chat endpoints into `rules/commerce/chat.ts`.
 
-### 11.2 Disable an Entire Group (Dot‑prefix)
+### 11.2 Disable Single Rule
+
+To temporarily disable a single rule without deleting it, add `enabled: false` to the rule configuration:
+
+```ts
+export const UserDetail = rule({
+  methods: ['GET'],
+  path: /^\/api\/users\/\d+$/,
+  enabled: false,  // Rule is disabled but still shows in logs as "(off)"
+  handler: (req, res) => res.json({ ... })
+});
+```
+
+The rule file is still imported and appears in startup logs marked as `(off)`, but won't match requests.
+
+### 11.3 Disable an Entire Group (Dot‑prefix)
 
 The loader ignores dotfiles & dotfolders. Rename a folder to start with `.` to deactivate every rule inside without deleting them:
 
@@ -250,7 +265,7 @@ rules/.demo-onboarding/   # inactive (ignored)
 
 Remove the leading dot to reactivate.
 
-### 11.3 Archive Packs in `.trash`
+### 11.4 Archive Packs in `.trash`
 
 Move old / seldom used sets into `rules/.trash/<pack>/`. Because `.trash` begins with a dot, all contents are ignored.
 
@@ -260,33 +275,34 @@ rules/.trash/legacy-campaign/*
 
 Bring them back by moving the folder out (and removing any leading dot).
 
-### 11.4 Shareable by Design
+### 11.5 Shareable by Design
 
 - Committed (non-sensitive) rule files are instantly shared—teammates restart and get the same overrides.
 - Avoid secrets / PII in responses. Use env vars or synthetic placeholders if needed.
 - Scenario-oriented packs let you prepare multiple demo states and enable exactly one (or a few) by folder name.
 
-### 11.5 Personal / WIP Rules
+### 11.6 Personal / WIP Rules
 
 - For scratch work you _do not_ want loaded or committed, use a dot-prefixed folder: `rules/.wip/`.
 - Optionally list it in `.gitignore` so accidental commits are avoided.
 
-### 11.6 Naming Guidance
+### 11.7 Naming Guidance
 
 - Folder names: concise, kebab-case domain or scenario (`billing-refunds`, `chat-surge-test`).
 - Rule `name` (shown in logs): stable identifier (PascalCase or kebab-case) reflecting purpose.
 
-### 11.7 Quick Lifecycle Table
+### 11.8 Quick Lifecycle Table
 
-| Action           | Steps                                 |
-| ---------------- | ------------------------------------- |
-| Add feature pack | Create folder, add rule files, commit |
-| Temporarily hide | Rename folder to `.folderName`        |
-| Archive          | Move into `rules/.trash/<folder>`     |
-| Restore          | Move back / remove leading dot        |
-| Share            | Push & teammates restart proxy        |
+| Action                | Steps                                 |
+| --------------------- | ------------------------------------- |
+| Add feature pack      | Create folder, add rule files, commit |
+| Disable single rule   | Add `enabled: false` to rule config   |
+| Disable rule group    | Rename folder to `.folderName`        |
+| Archive               | Move into `rules/.trash/<folder>`     |
+| Restore               | Move back / remove leading dot        |
+| Share                 | Push & teammates restart proxy        |
 
-### 11.8 Why Folders over Config Flags?
+### 11.9 Why Folders over Config Flags?
 
 This keeps the runtime loader trivial (no registry/state) while still giving coarse-grained enable/disable. Git diffs also remain obvious.
 

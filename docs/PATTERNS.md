@@ -208,6 +208,34 @@ export const Temp = rule(...);
 
 ---
 
+### Toggle Methods
+
+Two ways to disable rules:
+
+| Method | Scope | File Import | Log Display | Use Case |
+|--------|-------|-------------|-------------|----------|
+| `enabled: false` | Single rule | ✅ Yes | Shows "(off)" | Quick toggle, debugging |
+| Dot-prefix folder | Entire group | ❌ No | Not listed | Archive, experiments |
+
+**Example:**
+
+```typescript
+// Single rule toggle
+export const Debug = rule({
+  enabled: false,  // Quick disable
+  path: '/api/debug',
+  handler: ...
+});
+```
+
+```bash
+# Group toggle (CLI tool)
+./scripts/toggle-rules.sh disable experimental
+# Renames: rules/experimental/ → rules/.experimental/
+```
+
+---
+
 ## Common Pitfalls & Solutions
 
 ### Pitfall 1: Rule Order Matters
@@ -427,23 +455,39 @@ export const Fetch = rule('GET', '/api/data', async (req, res) => {
 
 ---
 
-### Pitfall 8: Enabling Rule But Export Disabled
+### Pitfall 8: Confusing Disable Methods
 
-❌ **Problem:**
+❌ **Problem:** Mixing or misunderstanding the two ways to disable rules.
+
+**Two disable methods:**
+
+1. **Single rule**: `enabled: false` in rule config
+   - File still imports
+   - Rule shows in logs as "(off)"
+   - Quick toggle without file changes
+
+2. **Entire group**: Dot-prefix folder name
+   - Files not imported at all
+   - No log entries
+   - Clean for archived/experimental code
 
 ```typescript
-// File exists in rules/ but export is commented out
-// export const MyRule = rule(...);
+// Single rule disable - still loads
+export const MyRule = rule({
+  enabled: false,  // Shows as "(off)" in logs
+  handler: ...
+});
 
-// Or uses dot-prefix folder
+// Group disable - doesn't load
 // File: rules/.disabled/my-rule.ts
-export const MyRule = rule(...);  // Won't load!
+export const MyRule = rule(...);  // File not imported!
 ```
 
-✅ **Solution:** Check:
-1. File is in `rules/` (not dotfile/folder)
-2. Export is valid: `export const ...` or `export default ...`
-3. Check server startup logs for rule name
+✅ **Solution:**
+- Use `enabled: false` for temporary single rule toggle
+- Use dot-prefix folder for disabling entire feature sets
+- Check server startup logs to verify rule state
+- Use `scripts/toggle-rules.sh` for group management
 
 ---
 
