@@ -6,6 +6,36 @@ precise, low-noise guidance so coding agents can modify the project safely.
 
 ---
 
+## Documentation Quick Links
+
+When you need:
+- **Development tools** → [docs/TOOLS.md](docs/TOOLS.md) - Commands & scripts
+- **Visual architecture & code locations** → [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+- **Copy-paste examples** → [docs/EXAMPLES.md](docs/EXAMPLES.md)
+- **Best practices & pitfalls** → [docs/PATTERNS.md](docs/PATTERNS.md)
+- **Documentation writing standards** → [docs/DOC-WRITING-GUIDE.md](docs/DOC-WRITING-GUIDE.md)
+- **User overview** → [README.md](README.md)
+
+## Available Tools
+
+Use these to work faster:
+
+**Claude Code Commands** (custom slash commands):
+- `/rule` - Create rules with AI assistance and templates
+- `/rule-toggle` - Enable/disable rule groups
+- `/rule-diagnose` - Systematic debugging with fix recommendations
+- `/rule-test` - Generate and run tests automatically
+- `/migrate-from-msw` - Convert MSW handlers to override-proxy
+
+**Bash Scripts** (in `scripts/` directory):
+- `./scripts/toggle-rules.sh` - Quick CLI toggling
+- `./scripts/test-rules.sh` - Automated test runner
+- `./scripts/list-rules.sh` - Inspect rules
+
+Full documentation: [docs/TOOLS.md](docs/TOOLS.md)
+
+---
+
 ## 1. Project Snapshot
 
 - Type: Node.js (TypeScript, ESM `type: module`)

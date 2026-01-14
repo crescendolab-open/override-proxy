@@ -15,5 +15,5 @@
     // "checkJs": false
   },
   "include": ["**/*.ts"],
-  "exclude": ["node_modules"]
+  "exclude": ["node_modules", "rules/.trash/**/*.ts"]
 }

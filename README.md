@@ -8,6 +8,34 @@ Key features:
 - Dynamic rule loading from `rules/` (restart handled by nodemon).
 - Layered environment loading via `dotenvx` (`.env.local` then `.env.default`).
 
+## Documentation
+
+| Document | Purpose |
+|----------|---------|
+| [README.md](README.md) | User guide and overview (you are here) |
+| [AGENTS.md](AGENTS.md) | Detailed guide for AI agents |
+| [docs/TOOLS.md](docs/TOOLS.md) | Development tools (Claude Code commands + bash scripts) |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Visual diagrams and code location index |
+| [docs/EXAMPLES.md](docs/EXAMPLES.md) | Copy-paste examples for common scenarios |
+| [docs/PATTERNS.md](docs/PATTERNS.md) | Best practices and common pitfalls |
+| [docs/DOC-WRITING-GUIDE.md](docs/DOC-WRITING-GUIDE.md) | Documentation writing standards (for contributors) |
+
+## Development Tools
+
+**Claude Code Commands** (custom slash commands):
+- `/rule` - Create new rules with templates
+- `/rule-toggle` - Enable/disable rule groups
+- `/rule-diagnose` - Debug non-working rules
+- `/rule-test` - Generate and run tests
+- `/migrate-from-msw` - Convert MSW handlers
+
+**Bash Scripts**:
+- `scripts/toggle-rules.sh` - Quick enable/disable
+- `scripts/test-rules.sh` - Automated testing
+- `scripts/list-rules.sh` - List all rules
+
+See [docs/TOOLS.md](docs/TOOLS.md) for details.
+
 ## Table of Contents
 
 1. Quick Start
