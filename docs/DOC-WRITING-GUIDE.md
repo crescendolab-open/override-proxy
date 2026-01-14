@@ -372,7 +372,7 @@ export const UserDetail = rule({
 | Overview | `README.md` | Project root |
 | Specific topic | `TOPIC.md` | `ARCHITECTURE.md` |
 | Plural collections | `TOPICS.md` | `EXAMPLES.md`, `PATTERNS.md` |
-| How-to guides | `VERB-NOUN.md` | `WRITING-GUIDE.md` |
+| How-to guides | `VERB-NOUN.md` | `DOC-WRITING-GUIDE.md` |
 | Reference | `API.md`, `REFERENCE.md` | API specs |
 
 **Guidelines:**

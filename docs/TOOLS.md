@@ -370,7 +370,3 @@ See [Claude Code docs](https://docs.anthropic.com/claude-code) for command synta
 - **docs/PATTERNS.md** - Best practices applied by tools
 - **docs/ARCHITECTURE.md** - Code locations for tool development
 - **AGENTS.md** - AI agent guidelines
-
----
-
-**Last updated:** 2025-01 — Crescendo Lab

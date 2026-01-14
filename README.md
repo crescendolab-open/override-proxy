@@ -36,23 +36,7 @@ Key features:
 
 See [docs/TOOLS.md](docs/TOOLS.md) for details.
 
-## Table of Contents
-
-1. Quick Start
-2. Environment Variables
-3. Rule System
-4. Examples
-5. Built‑in Endpoints
-6. Development Workflow
-7. Project Structure
-8. Common Scenarios
-9. Security Notes
-10. Extension Ideas
-11. Rule Organization & Archival
-12. Comparison with MSW
-13. License
-
-## 1. Quick Start
+## Quick Start
 
 ```bash
 pnpm install
@@ -65,7 +49,7 @@ Smoke test:
 curl http://localhost:4000/__env
 ```
 
-## 2. Environment Variables
+## Environment Variables
 
 Load order (first wins, no overwrite): `.env.local` → `.env.default`
 
@@ -85,7 +69,7 @@ PORT=4000
 
 > Put secrets only in `.env.local` (ignored by git). `.env.default` is committed and should remain non-sensitive.
 
-## 3. Rule System
+## Rule System
 
 Interface:
 
@@ -132,7 +116,7 @@ Export patterns:
 
 > Naming: when using named exports, the export identifier overrides any `name` set inside `rule()` options (the `name` option is deprecated).
 
-## 4. Examples
+## Examples
 
 ### 4.1 Simple path
 
@@ -189,7 +173,7 @@ export default rule({
 });
 ```
 
-## 5. Built-in Endpoints
+## Built-in Endpoints
 
 | Path     | Method | Description                          |
 | -------- | ------ | ------------------------------------ |
@@ -198,7 +182,7 @@ export default rule({
 
 Logging pattern: `[id] -> METHOD path` / `match ruleName` / completion line with status & source.
 
-## 6. Development Workflow
+## Development Workflow
 
 1. Add / edit files under `rules/`
 2. Save → nodemon restarts
@@ -208,7 +192,7 @@ Logging pattern: `[id] -> METHOD path` / `match ruleName` / completion line with
 Change upstream: set `PROXY_TARGET` in `.env.local`  
 Restrict CORS: `CORS_ORIGINS=http://localhost:3000,https://dev.example.com`
 
-## 7. Project Structure
+## Project Structure
 
 ```text
 .
@@ -222,20 +206,20 @@ Restrict CORS: `CORS_ORIGINS=http://localhost:3000,https://dev.example.com`
 └─ nodemon.json
 ```
 
-## 8. Common Scenarios
+## Common Scenarios
 
 Simulate latency: `await new Promise(r => setTimeout(r, 800));`  
 Conditional pass-through: `handler: (req,res,next)=> req.query["passthrough"]? next(): res.json({x:1})`  
 Header trigger: `test: (req)=> req.headers["x-mock-mode"] === "1"`
 
-## 9. Security Notes
+## Security Notes
 
 - Keep secrets only in `.env.local`.
 - Remove or protect `/__env` if exposing externally.
 - Rules execute arbitrary code: review sources.
 - Avoid exposing this service directly to the public Internet.
 
-## 10. Extension Ideas
+## Extension Ideas
 
 | Feature                 | Description                      |
 | ----------------------- | -------------------------------- |
@@ -246,7 +230,7 @@ Header trigger: `test: (req)=> req.headers["x-mock-mode"] === "1"`
 | Stats                   | hit count / last hit timestamp   |
 | Priority control        | Explicit rule ordering           |
 
-## 11. Rule Organization & Archival
+## Rule Organization & Archival
 
 You can treat `rules/` as a shared, modular catalog of partial overrides. Simple conventions keep it clean and make whole scenario packs easy to toggle.
 
@@ -306,7 +290,7 @@ Bring them back by moving the folder out (and removing any leading dot).
 
 This keeps the runtime loader trivial (no registry/state) while still giving coarse-grained enable/disable. Git diffs also remain obvious.
 
-## 12. Comparison with MSW
+## Comparison with MSW
 
 `override-proxy` and [MSW](https://mswjs.io/) both solve API interception/mocking but sit at different layers: this project is a standalone reverse proxy that applies override rules first and transparently forwards the rest; MSW runs inside your runtime (Service Worker in the browser or a Node process). They are often complementary (team‑wide shared partial overrides via `override-proxy`; fully deterministic isolated tests & Storybook via MSW).
 
@@ -384,7 +368,7 @@ sequenceDiagram
   MSW-->>DevApp: Deterministic mocked JSON
 ```
 
-## 13. License
+## License
 
 Apache License 2.0 © 2025 Crescendo Lab. See `LICENSE` for full text.
 

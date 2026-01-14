@@ -157,11 +157,11 @@ show_stats() {
   echo ""
 
   local total_files=$(find "$RULES_DIR" -type f \( -name "*.ts" -o -name "*.js" \) ! -name "*.d.ts" | wc -l | tr -d ' ')
-  local active_files=$(find "$RULES_DIR" -type f \( -name "*.ts" -o -name "*.js" \) ! -path "*/.* *" ! -name "*.d.ts" | wc -l | tr -d ' ')
+  local active_files=$(find "$RULES_DIR" -type f \( -name "*.ts" -o -name "*.js" \) ! -path "*/.*/*" ! -name ".*" ! -name "*.d.ts" | wc -l | tr -d ' ')
   local disabled_files=$((total_files - active_files))
 
   local total_dirs=$(find "$RULES_DIR" -mindepth 1 -type d | wc -l | tr -d ' ')
-  local active_dirs=$(find "$RULES_DIR" -mindepth 1 -type d ! -path "*/.*" ! -path "*/.trash/*" | wc -l | tr -d ' ')
+  local active_dirs=$(find "$RULES_DIR" -mindepth 1 -type d ! -name ".*" ! -path "*/.trash/*" | wc -l | tr -d ' ')
   local disabled_dirs=$((total_dirs - active_dirs))
 
   echo "Files:"
