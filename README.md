@@ -8,23 +8,35 @@ Key features:
 - Dynamic rule loading from `rules/` (restart handled by nodemon).
 - Layered environment loading via `dotenvx` (`.env.local` then `.env.default`).
 
-## Table of Contents
+## Documentation
 
-1. Quick Start
-2. Environment Variables
-3. Rule System
-4. Examples
-5. Built‑in Endpoints
-6. Development Workflow
-7. Project Structure
-8. Common Scenarios
-9. Security Notes
-10. Extension Ideas
-11. Rule Organization & Archival
-12. Comparison with MSW
-13. License
+| Document | Purpose |
+|----------|---------|
+| [README.md](README.md) | User guide and overview (you are here) |
+| [AGENTS.md](AGENTS.md) | Detailed guide for AI agents |
+| [docs/TOOLS.md](docs/TOOLS.md) | Development tools (Claude Code commands + bash scripts) |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Visual diagrams and code location index |
+| [docs/EXAMPLES.md](docs/EXAMPLES.md) | Copy-paste examples for common scenarios |
+| [docs/PATTERNS.md](docs/PATTERNS.md) | Best practices and common pitfalls |
+| [docs/DOC-WRITING-GUIDE.md](docs/DOC-WRITING-GUIDE.md) | Documentation writing standards (for contributors) |
 
-## 1. Quick Start
+## Development Tools
+
+**Claude Code Commands** (custom slash commands):
+- `/rule` - Create new rules with templates
+- `/rule-toggle` - Enable/disable rule groups
+- `/rule-diagnose` - Debug non-working rules
+- `/rule-test` - Generate and run tests
+- `/migrate-from-msw` - Convert MSW handlers
+
+**Bash Scripts**:
+- `scripts/toggle-rules.sh` - Quick enable/disable
+- `scripts/test-rules.sh` - Automated testing
+- `scripts/list-rules.sh` - List all rules
+
+See [docs/TOOLS.md](docs/TOOLS.md) for details.
+
+## Quick Start
 
 ```bash
 pnpm install
@@ -37,7 +49,7 @@ Smoke test:
 curl http://localhost:4000/__env
 ```
 
-## 2. Environment Variables
+## Environment Variables
 
 Load order (first wins, no overwrite): `.env.local` → `.env.default`
 
@@ -57,7 +69,7 @@ PORT=4000
 
 > Put secrets only in `.env.local` (ignored by git). `.env.default` is committed and should remain non-sensitive.
 
-## 3. Rule System
+## Rule System
 
 Interface:
 
@@ -104,7 +116,7 @@ Export patterns:
 
 > Naming: when using named exports, the export identifier overrides any `name` set inside `rule()` options (the `name` option is deprecated).
 
-## 4. Examples
+## Examples
 
 ### 4.1 Simple path
 
@@ -161,7 +173,7 @@ export default rule({
 });
 ```
 
-## 5. Built-in Endpoints
+## Built-in Endpoints
 
 | Path     | Method | Description                          |
 | -------- | ------ | ------------------------------------ |
@@ -170,7 +182,7 @@ export default rule({
 
 Logging pattern: `[id] -> METHOD path` / `match ruleName` / completion line with status & source.
 
-## 6. Development Workflow
+## Development Workflow
 
 1. Add / edit files under `rules/`
 2. Save → nodemon restarts
@@ -180,7 +192,7 @@ Logging pattern: `[id] -> METHOD path` / `match ruleName` / completion line with
 Change upstream: set `PROXY_TARGET` in `.env.local`  
 Restrict CORS: `CORS_ORIGINS=http://localhost:3000,https://dev.example.com`
 
-## 7. Project Structure
+## Project Structure
 
 ```text
 .
@@ -194,20 +206,20 @@ Restrict CORS: `CORS_ORIGINS=http://localhost:3000,https://dev.example.com`
 └─ nodemon.json
 ```
 
-## 8. Common Scenarios
+## Common Scenarios
 
 Simulate latency: `await new Promise(r => setTimeout(r, 800));`  
 Conditional pass-through: `handler: (req,res,next)=> req.query["passthrough"]? next(): res.json({x:1})`  
 Header trigger: `test: (req)=> req.headers["x-mock-mode"] === "1"`
 
-## 9. Security Notes
+## Security Notes
 
 - Keep secrets only in `.env.local`.
 - Remove or protect `/__env` if exposing externally.
 - Rules execute arbitrary code: review sources.
 - Avoid exposing this service directly to the public Internet.
 
-## 10. Extension Ideas
+## Extension Ideas
 
 | Feature                 | Description                      |
 | ----------------------- | -------------------------------- |
@@ -218,7 +230,7 @@ Header trigger: `test: (req)=> req.headers["x-mock-mode"] === "1"`
 | Stats                   | hit count / last hit timestamp   |
 | Priority control        | Explicit rule ordering           |
 
-## 11. Rule Organization & Archival
+## Rule Organization & Archival
 
 You can treat `rules/` as a shared, modular catalog of partial overrides. Simple conventions keep it clean and make whole scenario packs easy to toggle.
 
@@ -227,7 +239,22 @@ You can treat `rules/` as a shared, modular catalog of partial overrides. Simple
 - Group by feature / domain / scenario using either subfolders _and/or_ multi-export files.
 - Example: consolidate stable org endpoints into `rules/commerce/org1.ts` with several named exports, and chat endpoints into `rules/commerce/chat.ts`.
 
-### 11.2 Disable an Entire Group (Dot‑prefix)
+### 11.2 Disable Single Rule
+
+To temporarily disable a single rule without deleting it, add `enabled: false` to the rule configuration:
+
+```ts
+export const UserDetail = rule({
+  methods: ['GET'],
+  path: /^\/api\/users\/\d+$/,
+  enabled: false,  // Rule is disabled but still shows in logs as "(off)"
+  handler: (req, res) => res.json({ ... })
+});
+```
+
+The rule file is still imported and appears in startup logs marked as `(off)`, but won't match requests.
+
+### 11.3 Disable an Entire Group (Dot‑prefix)
 
 The loader ignores dotfiles & dotfolders. Rename a folder to start with `.` to deactivate every rule inside without deleting them:
 
@@ -238,7 +265,7 @@ rules/.demo-onboarding/   # inactive (ignored)
 
 Remove the leading dot to reactivate.
 
-### 11.3 Archive Packs in `.trash`
+### 11.4 Archive Packs in `.trash`
 
 Move old / seldom used sets into `rules/.trash/<pack>/`. Because `.trash` begins with a dot, all contents are ignored.
 
@@ -248,37 +275,38 @@ rules/.trash/legacy-campaign/*
 
 Bring them back by moving the folder out (and removing any leading dot).
 
-### 11.4 Shareable by Design
+### 11.5 Shareable by Design
 
 - Committed (non-sensitive) rule files are instantly shared—teammates restart and get the same overrides.
 - Avoid secrets / PII in responses. Use env vars or synthetic placeholders if needed.
 - Scenario-oriented packs let you prepare multiple demo states and enable exactly one (or a few) by folder name.
 
-### 11.5 Personal / WIP Rules
+### 11.6 Personal / WIP Rules
 
 - For scratch work you _do not_ want loaded or committed, use a dot-prefixed folder: `rules/.wip/`.
 - Optionally list it in `.gitignore` so accidental commits are avoided.
 
-### 11.6 Naming Guidance
+### 11.7 Naming Guidance
 
 - Folder names: concise, kebab-case domain or scenario (`billing-refunds`, `chat-surge-test`).
 - Rule `name` (shown in logs): stable identifier (PascalCase or kebab-case) reflecting purpose.
 
-### 11.7 Quick Lifecycle Table
+### 11.8 Quick Lifecycle Table
 
-| Action           | Steps                                 |
-| ---------------- | ------------------------------------- |
-| Add feature pack | Create folder, add rule files, commit |
-| Temporarily hide | Rename folder to `.folderName`        |
-| Archive          | Move into `rules/.trash/<folder>`     |
-| Restore          | Move back / remove leading dot        |
-| Share            | Push & teammates restart proxy        |
+| Action                | Steps                                 |
+| --------------------- | ------------------------------------- |
+| Add feature pack      | Create folder, add rule files, commit |
+| Disable single rule   | Add `enabled: false` to rule config   |
+| Disable rule group    | Rename folder to `.folderName`        |
+| Archive               | Move into `rules/.trash/<folder>`     |
+| Restore               | Move back / remove leading dot        |
+| Share                 | Push & teammates restart proxy        |
 
-### 11.8 Why Folders over Config Flags?
+### 11.9 Why Folders over Config Flags?
 
 This keeps the runtime loader trivial (no registry/state) while still giving coarse-grained enable/disable. Git diffs also remain obvious.
 
-## 12. Comparison with MSW
+## Comparison with MSW
 
 `override-proxy` and [MSW](https://mswjs.io/) both solve API interception/mocking but sit at different layers: this project is a standalone reverse proxy that applies override rules first and transparently forwards the rest; MSW runs inside your runtime (Service Worker in the browser or a Node process). They are often complementary (team‑wide shared partial overrides via `override-proxy`; fully deterministic isolated tests & Storybook via MSW).
 
@@ -356,7 +384,7 @@ sequenceDiagram
   MSW-->>DevApp: Deterministic mocked JSON
 ```
 
-## 13. License
+## License
 
 Apache License 2.0 © 2025 Crescendo Lab. See `LICENSE` for full text.
 

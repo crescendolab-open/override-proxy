@@ -1,0 +1,344 @@
+# Test Override Rules
+
+Generate and execute test commands for rules. Creates test scripts and validates responses.
+
+## Invocation
+
+Users can invoke this command by:
+- `/rule-test` - Interactive mode (select rules to test)
+- `/rule-test <ruleName>` - Test specific rule
+- `/rule-test --all` - Test all active rules
+- `/rule-test --scenario <name>` - Test all rules in a scenario (e.g., auth, errors)
+
+## Behavior
+
+When invoked, this command:
+
+### Phase 1: Rule Analysis
+1. **Read rule file** - Parse rule definition
+2. **Extract test parameters**:
+   - HTTP method(s)
+   - Path pattern (string or regex)
+   - Expected status code (from handler)
+   - Required headers (auth, content-type, etc.)
+   - Sample request body (for POST/PUT/PATCH)
+
+### Phase 2: Test Generation
+3. **Generate curl commands** - Create test commands for:
+   - Success case (expected 2xx)
+   - Error cases (4xx, 5xx if applicable)
+   - Edge cases (missing params, wrong method, etc.)
+
+4. **Create test script** - Optionally save as:
+   - Shell script (`scripts/test-<ruleName>.sh`)
+   - Test suite file (`tests/<ruleName>.test.ts`) if using vitest
+
+### Phase 3: Execution
+5. **Run tests** - Execute curl commands if server is running
+6. **Validate responses**:
+   - Status code matches expected
+   - Response body structure
+   - Response time (for latency rules)
+
+7. **Report results** - Show:
+   - ✅ Passing tests
+   - ❌ Failing tests
+   - ⏱️ Response times
+   - 📋 Full response samples
+
+## Test Generation Logic
+
+### Extract from Rule Code
+
+```typescript
+interface RuleTestInfo {
+  name: string;
+  methods: string[];
+  path: string | RegExp;
+  expectedStatus?: number;
+  requiresAuth?: boolean;
+  requiresBody?: boolean;
+  samplePath?: string;
+  sampleBody?: any;
+}
+
+async function analyzeRule(filePath: string): Promise<RuleTestInfo> {
+  const content = await readFile(filePath);
+
+  // Extract methods
+  const methodsMatch = content.match(/methods:\s*\[([^\]]+)\]/);
+  const methods = methodsMatch ?
+    methodsMatch[1].split(',').map(m => m.trim().replace(/['"]/g, '')) :
+    ['GET'];
+
+  // Extract path
+  const stringPathMatch = content.match(/path:\s*['"`]([^'"`]+)['"`]/);
+  const regexPathMatch = content.match(/path:\s*\/(.*?)\/([gimuy]*)/);
+
+  let path: string | RegExp;
+  let samplePath: string;
+
+  if (stringPathMatch) {
+    path = stringPathMatch[1];
+    samplePath = path; // Exact path
+  } else if (regexPathMatch) {
+    path = new RegExp(regexPathMatch[1], regexPathMatch[2]);
+    // Generate sample path from regex
+    samplePath = generateSampleFromRegex(path);
+  }
+
+  // Detect auth requirement
+  const requiresAuth = /req\.headers\[?['"]authorization['"]/.test(content) ||
+                      /Bearer/.test(content);
+
+  // Detect body requirement
+  const requiresBody = methods.some(m => ['POST', 'PUT', 'PATCH'].includes(m)) &&
+                      /req\.body/.test(content);
+
+  // Extract expected status
+  const statusMatch = content.match(/res\.status\((\d+)\)/);
+  const expectedStatus = statusMatch ? parseInt(statusMatch[1]) : 200;
+
+  return {
+    name: extractRuleName(content),
+    methods,
+    path,
+    samplePath,
+    expectedStatus,
+    requiresAuth,
+    requiresBody,
+    sampleBody: requiresBody ? extractSampleBody(content) : undefined
+  };
+}
+
+function generateSampleFromRegex(regex: RegExp): string {
+  const pattern = regex.source;
+
+  // Common patterns
+  if (/\\d\+/.test(pattern)) {
+    return pattern.replace(/\\d\+/g, '123'); // numeric ID
+  }
+  if (/\[a-zA-Z\]\+/.test(pattern)) {
+    return pattern.replace(/\[a-zA-Z\]\+/g, 'abc'); // letters
+  }
+
+  // Fallback: use first capture group
+  return pattern.replace(/\(.*?\)/g, 'test');
+}
+
+function extractSampleBody(content: string): any {
+  // Look for example in comments or inline
+  const exampleMatch = content.match(/\/\/\s*Example:?\s*({[^}]+})/);
+  if (exampleMatch) {
+    try {
+      return JSON.parse(exampleMatch[1]);
+    } catch {}
+  }
+
+  // Generate generic body based on req.body usage
+  const bodyFields = [...content.matchAll(/req\.body\??\.(\w+)/g)]
+    .map(m => m[1]);
+
+  return bodyFields.reduce((acc, field) => {
+    acc[field] = `test_${field}`;
+    return acc;
+  }, {} as any);
+}
+```
+
+### Generate Test Commands
+
+```typescript
+function generateCurlCommands(info: RuleTestInfo): string[] {
+  const baseUrl = 'http://localhost:4000';
+  const commands: string[] = [];
+
+  for (const method of info.methods) {
+    let cmd = `curl -X ${method} "${baseUrl}${info.samplePath}"`;
+
+    // Add headers
+    if (info.requiresAuth) {
+      cmd += ` \\\n  -H "Authorization: Bearer test-token"`;
+    }
+
+    if (info.requiresBody) {
+      cmd += ` \\\n  -H "Content-Type: application/json"`;
+      cmd += ` \\\n  -d '${JSON.stringify(info.sampleBody)}'`;
+    }
+
+    // Add verbose and follow redirects
+    cmd += ` \\\n  -v -L`;
+
+    commands.push(cmd);
+  }
+
+  return commands;
+}
+```
+
+## Test Script Templates
+
+### Bash Script Template
+
+```bash
+#!/bin/bash
+# Test script for <RuleName>
+# Generated by /rule-test
+
+set -e
+
+BASE_URL="http://localhost:4000"
+PASSED=0
+FAILED=0
+
+# Colors
+GREEN='\\033[0;32m'
+RED='\\033[0;31m'
+NC='\\033[0m' # No Color
+
+echo "Testing <RuleName>..."
+echo ""
+
+# Test 1: Success case
+echo "Test 1: <Description>"
+response=$(curl -s -w "\\n%{http_code}" "$BASE_URL<path>")
+status=$(echo "$response" | tail -n 1)
+body=$(echo "$response" | head -n -1)
+
+if [ "$status" -eq "<expectedStatus>" ]; then
+  echo "${GREEN}✓ PASS${NC} - Status: $status"
+  ((PASSED++))
+else
+  echo "${RED}✗ FAIL${NC} - Expected <expectedStatus>, got $status"
+  echo "Response: $body"
+  ((FAILED++))
+fi
+
+echo ""
+
+# Summary
+echo "Results: ${GREEN}$PASSED passed${NC}, ${RED}$FAILED failed${NC}"
+[ $FAILED -eq 0 ] && exit 0 || exit 1
+```
+
+### Vitest Test Template
+
+```typescript
+import { describe, it, expect } from 'vitest';
+import request from 'supertest';
+import { app } from '../main.js';
+
+describe('<RuleName>', () => {
+  it('should match <path> and return <expectedStatus>', async () => {
+    const res = await request(app)
+      .<method>('<path>')
+      <headers>
+      <body>;
+
+    expect(res.status).toBe(<expectedStatus>);
+    expect(res.body).toMatchObject(<expectedShape>);
+  });
+
+  it('should not match wrong method', async () => {
+    const res = await request(app)
+      .<wrongMethod>('<path>');
+
+    // Should proxy or 404
+    expect(res.status).not.toBe(<expectedStatus>);
+  });
+});
+```
+
+## Output Format
+
+### Interactive Mode Output
+
+```
+Found 3 rules in rules/auth/:
+  1. LoginAuth (POST /api/login)
+  2. RefreshToken (POST /api/auth/refresh)
+  3. UserProfile (GET /api/profile)
+
+Select rules to test (comma-separated, or 'all'): 1,3
+
+Analyzing rules...
+
+--- Testing LoginAuth ---
+
+Generated test commands:
+
+1. Success case:
+   curl -X POST "http://localhost:4000/api/login" \
+     -H "Content-Type: application/json" \
+     -d '{"email":"test@example.com","password":"test123"}'
+
+2. Missing credentials:
+   curl -X POST "http://localhost:4000/api/login" \
+     -H "Content-Type: application/json" \
+     -d '{}'
+
+Run tests now? (y/n): y
+
+Running tests...
+
+✅ Test 1: Success case
+   Status: 200 OK
+   Time: 45ms
+   Response: { "token": "...", "user": { ... } }
+
+❌ Test 2: Missing credentials
+   Status: 200 OK (expected 400)
+   Issue: Rule should validate required fields
+   Fix: Add validation in handler
+
+--- Testing UserProfile ---
+
+Generated test commands:
+
+1. With auth:
+   curl -X GET "http://localhost:4000/api/profile" \
+     -H "Authorization: Bearer test-token"
+
+2. Without auth:
+   curl -X GET "http://localhost:4000/api/profile"
+
+Run tests now? (y/n): y
+
+Running tests...
+
+✅ Test 1: With auth
+   Status: 200 OK
+   Time: 12ms
+
+✅ Test 2: Without auth
+   Status: 401 Unauthorized
+   Time: 8ms
+
+Summary:
+  Total: 4 tests
+  Passed: 3 ✅
+  Failed: 1 ❌
+
+Save test scripts? (y/n): y
+
+Created:
+  - scripts/test-LoginAuth.sh
+  - scripts/test-UserProfile.sh
+
+To run again: ./scripts/test-LoginAuth.sh
+```
+
+## Options
+
+Support additional flags:
+
+- `--save` - Save test scripts without running
+- `--format <type>` - Output format: `bash`, `vitest`, `curl`
+- `--output <dir>` - Output directory for test files
+- `--verbose` - Show full request/response details
+- `--timeout <ms>` - Set timeout for tests (default: 5000)
+
+## Example Interactions
+
+```
+User: /rule-test UserDetail

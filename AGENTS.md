@@ -6,6 +6,36 @@ precise, low-noise guidance so coding agents can modify the project safely.
 
 ---
 
+## Documentation Quick Links
+
+When you need:
+- **Development tools** → [docs/TOOLS.md](docs/TOOLS.md) - Commands & scripts
+- **Visual architecture & code locations** → [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+- **Copy-paste examples** → [docs/EXAMPLES.md](docs/EXAMPLES.md)
+- **Best practices & pitfalls** → [docs/PATTERNS.md](docs/PATTERNS.md)
+- **Documentation writing standards** → [docs/DOC-WRITING-GUIDE.md](docs/DOC-WRITING-GUIDE.md)
+- **User overview** → [README.md](README.md)
+
+## Available Tools
+
+Use these to work faster:
+
+**Claude Code Commands** (custom slash commands):
+- `/rule` - Create rules with AI assistance and templates
+- `/rule-toggle` - Enable/disable rule groups
+- `/rule-diagnose` - Systematic debugging with fix recommendations
+- `/rule-test` - Generate and run tests automatically
+- `/migrate-from-msw` - Convert MSW handlers to override-proxy
+
+**Bash Scripts** (in `scripts/` directory):
+- `./scripts/toggle-rules.sh` - Quick CLI toggling
+- `./scripts/test-rules.sh` - Automated test runner
+- `./scripts/list-rules.sh` - Inspect rules
+
+Full documentation: [docs/TOOLS.md](docs/TOOLS.md)
+
+---
+
 ## 1. Project Snapshot
 
 - Type: Node.js (TypeScript, ESM `type: module`)
@@ -108,10 +138,16 @@ The loader (`fast-glob` with `dot: false`) ignores dot-prefixed files/folders. U
 | Use case                | Action / Convention                                     |
 | ----------------------- | ------------------------------------------------------- |
 | Group related rules     | Place them in a subfolder (`rules/commerce/`, etc.)     |
+| Disable single rule     | Add `enabled: false` to rule config (rule still loads)  |
 | Temporarily disable set | Rename folder to start with `.` (`rules/.demo-pack/`)   |
 | Archive old packs       | Move into `rules/.trash/<name>/` (dot keeps it ignored) |
 | Restore pack            | Move back / remove leading dot                          |
 | Personal scratch        | `rules/.wip/` (also add to `.gitignore` if desired)     |
+
+**Toggle methods:**
+- **Single rule**: Set `enabled: false` in rule config (file still imports, rule shows as "(off)" in logs)
+- **Rule group**: Rename folder with dot prefix (files not imported at all)
+- **CLI tool**: Use `scripts/toggle-rules.sh` for quick group toggling
 
 No runtime registry is needed—folder naming alone controls inclusion. This keeps the import loop trivial and diff-friendly.
 
