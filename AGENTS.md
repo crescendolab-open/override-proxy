@@ -208,11 +208,23 @@ Avoid changing this behavior unless you add configurability; keep deterministic 
 ## 9. Adding a New Rule (Recipe)
 
 1. Create a file under `rules/` (e.g. `rules/user-detail.ts`).
-2. Implement using `rule()` helper.
-3. Use `path: '/api/foo'` or `path: /^\/api\/foo\//` or custom `test`.
-4. Return response via `res.json(...)`. Avoid blocking long operations; simulate delay with `await new Promise(r=>setTimeout(r, ms))`.
-5. Save: nodemon reloads automatically. Confirm presence in startup `Overrides:` list.
-6. Send request; verify log shows `match <ruleName>` and `via override`.
+2. Import `rule` helper with correct path:
+   - From `rules/*.ts`: `import { rule } from "../utils.js";`
+   - From `rules/subdir/*.ts`: `import { rule } from "../../utils.js";`
+3. Implement using `rule()` helper with named export (export name becomes rule name).
+4. Use `path: '/api/foo'` or `path: /^\/api\/foo\//` or custom `test`.
+5. Return response via `res.json(...)`. Avoid blocking long operations; simulate delay with `await new Promise(r=>setTimeout(r, ms))`.
+6. Save: nodemon reloads automatically. Confirm presence in startup `Overrides:` list.
+7. Send request; verify log shows `match <ruleName>` and `via override`.
+
+Example:
+```typescript
+import { rule } from "../utils.js";
+
+export const myRule = rule("GET", "/api/foo", (req, res) => {
+  res.json({ message: "hello" });
+});
+```
 
 Disable temporarily by setting `enabled: false` (it will still list with `(off)`).
 
