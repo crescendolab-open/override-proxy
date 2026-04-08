@@ -6,7 +6,7 @@
   "description": "Override-first local mock + proxy server",
   "main": "main.ts",
   "scripts": {
-    "dev": "nodemon"
+    "dev": "node scripts/dev.mjs"
   },
   "keywords": [
     "mock",
