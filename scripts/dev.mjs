@@ -28,55 +28,44 @@ const rulesDirArg = args.find((a) => a.startsWith("--rules-dir="));
 const rulesPath = rulesDirArg?.split("=").slice(1).join("=");
 const externalRulesDir = rulesPath ? resolve(rulesPath) : null;
 
-// If no external rules dir, just run plain nodemon (uses nodemon.json as-is)
-if (!externalRulesDir && args.length === 0) {
-  try {
-    execFileSync(
-      nodemonBin,
-      [],
-      { stdio: "inherit", cwd: projectRoot },
-    );
-  } catch {
-    process.exit(0);
-  }
-  process.exit(0);
-}
-
-// Read nodemon.json to get the base watch list
-const nodemonConfig = JSON.parse(
-  readFileSync(join(projectRoot, "nodemon.json"), "utf-8"),
-);
-const baseWatch = nodemonConfig.watch ?? [];
-const ext = nodemonConfig.ext ?? "ts,js,json";
-const baseExec = nodemonConfig.exec ?? "tsx main.ts";
-
-// Build nodemon CLI args that replicate nodemon.json + add external watch
+// Build nodemon CLI args — only override what we need to change.
+// Everything else (ext, env, ignore, delay, …) comes from nodemon.json.
 const nodemonArgs = [];
+const needsOverride = externalRulesDir || args.length > 0;
 
-// Watch paths: base from nodemon.json + external rules dir
-for (const w of baseWatch) {
-  nodemonArgs.push("--watch", w);
+if (needsOverride) {
+  const config = JSON.parse(
+    readFileSync(join(projectRoot, "nodemon.json"), "utf-8"),
+  );
+
+  // CLI --watch replaces (not supplements) nodemon.json watch,
+  // so when adding external dir we must include the base paths too.
+  if (externalRulesDir) {
+    for (const w of config.watch ?? []) {
+      nodemonArgs.push("--watch", w);
+    }
+    nodemonArgs.push("--watch", externalRulesDir);
+  }
+
+  // Forward args to the exec command (override --exec to append them).
+  if (args.length > 0) {
+    const exec = config.exec ?? "tsx main.ts";
+    const quote = (a) => (a.includes(" ") ? `"${a}"` : a);
+    nodemonArgs.push("--exec", `${exec} ${args.map(quote).join(" ")}`);
+  }
 }
-if (externalRulesDir) {
-  nodemonArgs.push("--watch", externalRulesDir);
-}
-
-// Extensions
-nodemonArgs.push("--ext", ext);
-
-// Exec: base command + forwarded args
-const quote = (a) => (a.includes(" ") ? `"${a}"` : a);
-const execCmd =
-  args.length > 0 ? `${baseExec} ${args.map(quote).join(" ")}` : baseExec;
-nodemonArgs.push("--exec", execCmd);
 
 try {
-  execFileSync(
-    nodemonBin,
-    nodemonArgs,
-    { stdio: "inherit", cwd: projectRoot },
-  );
-} catch {
-  // nodemon was killed (Ctrl+C) — exit cleanly
+  execFileSync(nodemonBin, nodemonArgs, {
+    stdio: "inherit",
+    cwd: projectRoot,
+  });
+} catch (err) {
+  // execFileSync throws on non-zero exit. If nodemon was killed by a signal
+  // (Ctrl+C), exit cleanly; otherwise surface the error.
+  if (err?.status != null && err.status !== 0) {
+    process.exit(err.status);
+  }
+  // Signal-based termination (e.g. SIGINT) — err.status is null
   process.exit(0);
 }
