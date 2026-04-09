@@ -17,21 +17,22 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const projectRoot = resolve(__dirname, "..");
+const nodemonBin = join(projectRoot, "node_modules", ".bin",
+  process.platform === "win32" ? "nodemon.cmd" : "nodemon");
 
 // Collect all args (npm/pnpm strips the leading `--`)
 const args = process.argv.slice(2);
 
 // Extract --rules-dir=<path> if present
 const rulesDirArg = args.find((a) => a.startsWith("--rules-dir="));
-const externalRulesDir = rulesDirArg
-  ? resolve(rulesDirArg.split("=").slice(1).join("="))
-  : null;
+const rulesPath = rulesDirArg?.split("=").slice(1).join("=");
+const externalRulesDir = rulesPath ? resolve(rulesPath) : null;
 
 // If no external rules dir, just run plain nodemon (uses nodemon.json as-is)
 if (!externalRulesDir && args.length === 0) {
   try {
     execFileSync(
-      join(projectRoot, "node_modules", ".bin", "nodemon"),
+      nodemonBin,
       [],
       { stdio: "inherit", cwd: projectRoot },
     );
@@ -64,13 +65,14 @@ if (externalRulesDir) {
 nodemonArgs.push("--ext", ext);
 
 // Exec: base command + forwarded args
+const quote = (a) => (a.includes(" ") ? `"${a}"` : a);
 const execCmd =
-  args.length > 0 ? `${baseExec} ${args.join(" ")}` : baseExec;
+  args.length > 0 ? `${baseExec} ${args.map(quote).join(" ")}` : baseExec;
 nodemonArgs.push("--exec", execCmd);
 
 try {
   execFileSync(
-    join(projectRoot, "node_modules", ".bin", "nodemon"),
+    nodemonBin,
     nodemonArgs,
     { stdio: "inherit", cwd: projectRoot },
   );

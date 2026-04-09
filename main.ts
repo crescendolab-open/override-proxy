@@ -98,9 +98,8 @@ async function loadRulesFromDir(
 
 // Parse --rules-dir=<path> from CLI args
 const rulesDirArg = process.argv.find((a) => a.startsWith("--rules-dir="));
-const externalRulesDir = rulesDirArg
-  ? resolve(rulesDirArg.split("=").slice(1).join("="))
-  : null;
+const rulesPath = rulesDirArg?.split("=").slice(1).join("=");
+const externalRulesDir = rulesPath ? resolve(rulesPath) : null;
 
 // Load external rules FIRST so they take precedence in the dispatch loop
 if (externalRulesDir) {
