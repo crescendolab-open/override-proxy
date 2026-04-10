@@ -23,7 +23,7 @@ const nodemonBin = join(projectRoot, "node_modules", ".bin",
 // Collect all args (npm/pnpm strips the leading `--`)
 const args = process.argv.slice(2);
 
-// Extract --rules-dir=<path> if present
+// Extract --rules-dir=<path> if present (see also: parseRulesDir in utils.ts)
 const rulesDirArg = args.find((a) => a.startsWith("--rules-dir="));
 const rulesPath = rulesDirArg?.split("=").slice(1).join("=");
 const externalRulesDir = rulesPath ? resolve(rulesPath) : null;

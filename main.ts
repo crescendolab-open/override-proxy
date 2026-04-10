@@ -9,10 +9,10 @@ import { createProxyMiddleware } from "http-proxy-middleware";
 import cors from "cors";
 import chalk from "chalk";
 import url from "node:url";
-import { join, dirname, resolve } from "pathe";
+import { join, dirname, basename } from "pathe";
 import fg from "fast-glob";
 import fsExtra from "fs-extra";
-import { OverrideRule, isOverrideRule, OverrideRuleMeta } from "./utils.js";
+import { OverrideRule, isOverrideRule, OverrideRuleMeta, parseRulesDir } from "./utils.js";
 import getPort from "get-port";
 
 // ----------------------------------------------------------------------------
@@ -34,19 +34,17 @@ const rulesDir = join(__dirname, "rules");
 const overrides: OverrideRule[] = [];
 const metaMap = new WeakMap<OverrideRule, OverrideRuleMeta>();
 
-async function loadRulesFromDir(
-  dir: string,
-  target: OverrideRule[],
-  meta: WeakMap<OverrideRule, OverrideRuleMeta>,
-  label: string,
-): Promise<void> {
-  if (!(await fsExtra.pathExists(dir))) return;
+type LoadedRule = { rule: OverrideRule; relPath: string; exportName?: string | undefined };
+
+async function loadRulesFromDir(dir: string): Promise<LoadedRule[]> {
+  if (!(await fsExtra.pathExists(dir))) return [];
   // Glob pattern: ts/js (skip .d.ts & dotfiles)
   const entries = await fg(["**/*.ts", "**/*.js"], {
     cwd: dir,
     dot: false, // ignore dotfiles / dotfolders
     ignore: ["**/*.d.ts"],
   });
+  const loaded: LoadedRule[] = [];
   for (const rel of entries) {
     const full = join(dir, rel);
     try {
@@ -78,7 +76,7 @@ async function loadRulesFromDir(
               collected.push({ rule: item, exportName: key });
         }
       }
-      // Finalize & store metadata
+      // Finalize names
       for (const { rule: rOriginal, exportName } of collected) {
         let r = rOriginal;
         if (exportName && !r.name) {
@@ -86,29 +84,36 @@ async function loadRulesFromDir(
             r = { ...r } as OverrideRule;
           r.name = exportName;
         }
-        const id = `[${label}] ${rel}${exportName ? ":" + exportName : ""}`;
-        meta.set(r, { file: `[${label}] ${rel}`, export: exportName, id });
-        target.push(r);
+        loaded.push({ rule: r, relPath: rel, exportName });
       }
     } catch (e) {
-      console.error(`Failed loading rule module [${label}]`, rel, e);
+      console.error("Failed loading rule module", join(basename(dir), rel), e);
     }
+  }
+  return loaded;
+}
+
+function registerRules(loaded: LoadedRule[], dir: string) {
+  const dirName = basename(dir);
+  for (const { rule, relPath, exportName } of loaded) {
+    const file = `${dirName}/${relPath}`;
+    const id = exportName ? `${file}:${exportName}` : file;
+    metaMap.set(rule, { file, export: exportName, id });
+    overrides.push(rule);
   }
 }
 
 // Parse --rules-dir=<path> from CLI args
-const rulesDirArg = process.argv.find((a) => a.startsWith("--rules-dir="));
-const rulesPath = rulesDirArg?.split("=").slice(1).join("=");
-const externalRulesDir = rulesPath ? resolve(rulesPath) : null;
+const externalRulesDir = parseRulesDir(process.argv);
 
 // Load external rules FIRST so they take precedence in the dispatch loop
 if (externalRulesDir) {
-  await loadRulesFromDir(externalRulesDir, overrides, metaMap, "external");
+  registerRules(await loadRulesFromDir(externalRulesDir), externalRulesDir);
 }
 
 // Ensure built-in rules directory exists (allow empty project start)
 await fsExtra.ensureDir(rulesDir);
-await loadRulesFromDir(rulesDir, overrides, metaMap, "built-in");
+registerRules(await loadRulesFromDir(rulesDir), rulesDir);
 
 // ----------------------------------------------------------------------------
 // Express app setup
