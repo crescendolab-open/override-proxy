@@ -9,10 +9,10 @@ import { createProxyMiddleware } from "http-proxy-middleware";
 import cors from "cors";
 import chalk from "chalk";
 import url from "node:url";
-import { join, dirname } from "pathe";
+import { join, dirname, basename } from "pathe";
 import fg from "fast-glob";
 import fsExtra from "fs-extra";
-import { OverrideRule, isOverrideRule, OverrideRuleMeta } from "./utils.js";
+import { OverrideRule, isOverrideRule, OverrideRuleMeta, parseRulesDir } from "./utils.js";
 import getPort from "get-port";
 
 // ----------------------------------------------------------------------------
@@ -30,63 +30,90 @@ const CORS_ORIGINS = process.env["CORS_ORIGINS"]; // comma-separated list; if un
 // Load override rule modules
 const __dirname = dirname(url.fileURLToPath(import.meta.url));
 const rulesDir = join(__dirname, "rules");
-// Ensure rules directory exists (allow empty project start)
-await fsExtra.ensureDir(rulesDir);
+
 const overrides: OverrideRule[] = [];
 const metaMap = new WeakMap<OverrideRule, OverrideRuleMeta>();
-// Glob pattern: ts/js (skip .d.ts & dotfiles)
-const entries = await fg(["**/*.ts", "**/*.js"], {
-  cwd: rulesDir,
-  dot: false, // ignore dotfiles / dotfolders
-  ignore: ["**/*.d.ts"],
-});
-for (const rel of entries) {
-  const full = join(rulesDir, rel);
-  try {
-    const mod: any = await import(full);
-    type Collected = { rule: OverrideRule; exportName?: string };
-    const collected: Collected[] = [];
 
-    // Legacy default (rule or array of rules)
-    if (mod.default) {
-      if (Array.isArray(mod.default)) {
-        for (const item of mod.default)
+type LoadedRule = { rule: OverrideRule; relPath: string; exportName?: string | undefined };
+
+async function loadRulesFromDir(dir: string): Promise<LoadedRule[]> {
+  if (!(await fsExtra.pathExists(dir))) return [];
+  // Glob pattern: ts/js (skip .d.ts & dotfiles)
+  const entries = await fg(["**/*.ts", "**/*.js"], {
+    cwd: dir,
+    dot: false, // ignore dotfiles / dotfolders
+    ignore: ["**/*.d.ts"],
+  });
+  const loaded: LoadedRule[] = [];
+  for (const rel of entries) {
+    const full = join(dir, rel);
+    try {
+      const mod: any = await import(full);
+      type Collected = { rule: OverrideRule; exportName?: string };
+      const collected: Collected[] = [];
+
+      // Legacy default (rule or array of rules)
+      if (mod.default) {
+        if (Array.isArray(mod.default)) {
+          for (const item of mod.default)
+            if (isOverrideRule(item)) collected.push({ rule: item });
+        } else if (isOverrideRule(mod.default)) {
+          collected.push({ rule: mod.default });
+        }
+      }
+      // Legacy named 'rules'
+      if (Array.isArray(mod.rules)) {
+        for (const item of mod.rules)
           if (isOverrideRule(item)) collected.push({ rule: item });
-      } else if (isOverrideRule(mod.default)) {
-        collected.push({ rule: mod.default });
       }
-    }
-    // Legacy named 'rules'
-    if (Array.isArray(mod.rules)) {
-      for (const item of mod.rules)
-        if (isOverrideRule(item)) collected.push({ rule: item });
-    }
-    // Named exports
-    for (const [key, val] of Object.entries(mod)) {
-      if (key === "default" || key === "rules") continue;
-      if (isOverrideRule(val)) collected.push({ rule: val, exportName: key });
-      else if (Array.isArray(val)) {
-        for (const item of val)
-          if (isOverrideRule(item))
-            collected.push({ rule: item, exportName: key });
+      // Named exports
+      for (const [key, val] of Object.entries(mod)) {
+        if (key === "default" || key === "rules") continue;
+        if (isOverrideRule(val)) collected.push({ rule: val, exportName: key });
+        else if (Array.isArray(val)) {
+          for (const item of val)
+            if (isOverrideRule(item))
+              collected.push({ rule: item, exportName: key });
+        }
       }
-    }
-    // Finalize & store metadata
-    for (const { rule: rOriginal, exportName } of collected) {
-      let r = rOriginal;
-      if (exportName && !r.name) {
-        if (!Object.isExtensible(r) || Object.isFrozen(r))
-          r = { ...r } as OverrideRule;
-        r.name = exportName;
+      // Finalize names
+      for (const { rule: rOriginal, exportName } of collected) {
+        let r = rOriginal;
+        if (exportName && !r.name) {
+          if (!Object.isExtensible(r) || Object.isFrozen(r))
+            r = { ...r } as OverrideRule;
+          r.name = exportName;
+        }
+        loaded.push({ rule: r, relPath: rel, exportName });
       }
-      const id = `${rel}${exportName ? ":" + exportName : ""}`;
-      metaMap.set(r, { file: rel, export: exportName, id });
-      overrides.push(r);
+    } catch (e) {
+      console.error("Failed loading rule module", join(basename(dir), rel), e);
     }
-  } catch (e) {
-    console.error("Failed loading rule module", rel, e);
+  }
+  return loaded;
+}
+
+function registerRules(loaded: LoadedRule[], dir: string) {
+  const dirName = basename(dir);
+  for (const { rule, relPath, exportName } of loaded) {
+    const file = `${dirName}/${relPath}`;
+    const id = exportName ? `${file}:${exportName}` : file;
+    metaMap.set(rule, { file, export: exportName, id });
+    overrides.push(rule);
   }
 }
+
+// Parse --rules-dir=<path> from CLI args
+const externalRulesDir = parseRulesDir(process.argv);
+
+// Load external rules FIRST so they take precedence in the dispatch loop
+if (externalRulesDir) {
+  registerRules(await loadRulesFromDir(externalRulesDir), externalRulesDir);
+}
+
+// Ensure built-in rules directory exists (allow empty project start)
+await fsExtra.ensureDir(rulesDir);
+registerRules(await loadRulesFromDir(rulesDir), rulesDir);
 
 // ----------------------------------------------------------------------------
 // Express app setup

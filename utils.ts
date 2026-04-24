@@ -1,4 +1,5 @@
 import type { Method, MethodList, RuleHandler, RuleTest } from "./types.js";
+import { resolve } from "pathe";
 
 export interface OverrideRule {
   name?: string; // identifier (for logs). Will be overridden by export name if present.
@@ -131,4 +132,11 @@ export function isOverrideRule(obj: any): obj is OverrideRule {
     typeof obj.handler === "function" &&
     Array.isArray(obj.methods)
   );
+}
+
+/** Extract resolved path from `--rules-dir=<path>` in argv. Returns null if absent or empty. */
+export function parseRulesDir(argv: string[]): string | null {
+  const arg = argv.find((a) => a.startsWith("--rules-dir="));
+  const value = arg?.split("=").slice(1).join("=");
+  return value ? resolve(value) : null;
 }
