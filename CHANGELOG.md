@@ -1,5 +1,11 @@
 # @crescendolab/override-proxy
 
+## 0.1.1
+
+### Patch Changes
+
+- 3d90529: Add an installable Codex skill for override-proxy usage.
+
 ## 0.1.0
 
 ### Minor Changes
