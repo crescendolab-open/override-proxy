@@ -12,18 +12,9 @@ import { createProxyFallback } from "./proxy-fallback.js";
 import { findRoute, rewriteRoutePath } from "./route-matching.js";
 import type {
   OverrideRule,
-  OverrideRuleMeta,
   WebSocketConnectionRule,
   WebSocketRule,
 } from "./utils.js";
-
-export interface CreateHttpAppOptions {
-  target: string;
-  port: number;
-  corsOrigins?: string | undefined;
-  overrides: OverrideRule[];
-  metaMap: WeakMap<OverrideRule, OverrideRuleMeta>;
-}
 
 export interface CreatedHttpApp {
   app: Express;
@@ -34,11 +25,8 @@ export interface HttpRouteRuntime {
   serverName: string;
   route: NormalizedRoute;
   overrides: OverrideRule[];
-  metaMap: WeakMap<OverrideRule, OverrideRuleMeta>;
   wsRules: WebSocketRule[];
-  wsMetaMap: WeakMap<WebSocketRule, OverrideRuleMeta>;
   wsConnectionRules: WebSocketConnectionRule[];
-  wsConnectionMetaMap: WeakMap<WebSocketConnectionRule, OverrideRuleMeta>;
 }
 
 export interface CreateRoutedHttpAppOptions {
@@ -64,84 +52,6 @@ interface ResponseLogStore {
   markOverride: (res: Response, match: string) => void;
   markProxy: (res: Response) => void;
   resolveLogId: (res: Response) => number;
-}
-
-export function createHttpApp({
-  target,
-  port,
-  corsOrigins,
-  overrides,
-  metaMap,
-}: CreateHttpAppOptions): CreatedHttpApp {
-  const app = express();
-
-  app.get("/__env", (_req, res) => {
-    const env = {
-      PROXY_TARGET: target,
-      PORT: port,
-      CORS_ORIGINS: corsOrigins || null,
-    };
-    res.json({ env });
-  });
-
-  let allowedOrigins: string[] | null = null;
-  if (corsOrigins) {
-    allowedOrigins = corsOrigins
-      .split(",")
-      .map((o) => o.trim())
-      .filter(Boolean);
-  }
-
-  const corsOptions: cors.CorsOptions = {
-    origin: allowedOrigins
-      ? (origin, callback) => {
-          if (!origin) return callback(null, true);
-          if (allowedOrigins.includes(origin)) return callback(null, true);
-          return callback(new Error("Not allowed by CORS"));
-        }
-      : true,
-    credentials: true,
-  };
-
-  app.use(cors(corsOptions));
-
-  const responseLog = createResponseLogStore();
-  app.use(responseLog.middleware);
-
-  app.use(async (req, res, next) => {
-    for (const rule of overrides) {
-      try {
-        if (rule.test(req)) {
-          const match = rule.name || "override";
-          responseLog.markOverride(res, match);
-          logRequestMatch(
-            responseLog.resolveLogId(res),
-            match,
-            metaMap.get(rule),
-          );
-          await rule.handler(req, res, next);
-          return;
-        }
-      } catch (err) {
-        logError(responseLog.resolveLogId(res), err, rule.name);
-        res.status(500).json({ error: "override_failed", detail: String(err) });
-        return;
-      }
-    }
-    next();
-  });
-
-  app.use(
-    "/",
-    createProxyFallback({
-      target,
-      nextRequestId: responseLog.nextRequestId,
-      markProxyResponse: responseLog.markProxy,
-      resolveLogId: responseLog.resolveLogId,
-    }),
-  );
-
-  return { app, nextRequestId: responseLog.nextRequestId };
 }
 
 export function createRoutedHttpApp({
@@ -175,7 +85,10 @@ export function createRoutedHttpApp({
           path: route.path,
           priority: route.priority,
           target: route.target,
-          rules: route.rulesDirs.length,
+          rules: route.http === false ? 0 : route.http.rules.length,
+          wsRules: route.ws === false ? 0 : route.ws.rules.length,
+          wsConnectionRules:
+            route.ws === false ? 0 : route.ws.connectionRules.length,
         })),
       });
     });
@@ -218,11 +131,7 @@ export function createRoutedHttpApp({
         if (rule.test(req)) {
           const match = rule.name || "override";
           responseLog.markOverride(res, match);
-          logRequestMatch(
-            responseLog.resolveLogId(res),
-            match,
-            routeRuntime.metaMap.get(rule),
-          );
+          logRequestMatch(responseLog.resolveLogId(res), match);
           await rule.handler(req, res, next);
           return;
         }

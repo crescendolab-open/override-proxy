@@ -11,6 +11,10 @@ Practical, copy-paste-ready examples organized by scenario. Each example include
 ```typescript
 // override-proxy.config.ts
 import { defineConfig } from "./config.js";
+import { PatchClientMessage, PatchUpstreamMessage } from "./rules/ws/chat.js";
+import { ApiRule } from "./rules/api.js";
+import { AssetsRule } from "./rules/assets.js";
+import { RootRule } from "./rules/root.js";
 
 export default defineConfig({
   servers: [
@@ -23,20 +27,20 @@ export default defineConfig({
           name: "api",
           path: "/api",
           target: "https://api.example.com",
-          rulesDir: "./rules/api",
+          http: { rules: [ApiRule] },
           rewrite: { stripPrefix: true },
         },
         {
           name: "assets",
           path: "/assets",
           target: "https://assets.example.com",
-          rulesDir: "./rules/assets",
+          http: { rules: [AssetsRule] },
         },
         {
           name: "root",
           path: "/",
           target: "https://www.example.com",
-          rulesDir: "./rules/root",
+          http: { rules: [RootRule] },
         },
       ],
     },
@@ -59,6 +63,8 @@ Route matching is segment-aware: `/api/users` matches `/api`, but `/apix` does n
 ```typescript
 // override-proxy.config.ts
 import { defineConfig } from "./config.js";
+import { ApiRule } from "./rules/api.js";
+import { AdminRule } from "./rules/admin.js";
 
 export default defineConfig({
   servers: [
@@ -69,7 +75,7 @@ export default defineConfig({
         {
           path: "/",
           target: "https://api.example.com",
-          rulesDir: "./rules/api",
+          http: { rules: [ApiRule] },
         },
       ],
     },
@@ -80,7 +86,7 @@ export default defineConfig({
         {
           path: "/",
           target: "https://admin.example.com",
-          rulesDir: "./rules/admin",
+          http: { rules: [AdminRule] },
         },
       ],
     },
@@ -172,7 +178,7 @@ export default defineConfig({
           ws: {
             mode: "bridge",
             target: "wss://chat.example.com",
-            rulesDir: "./rules/ws",
+            rules: [PatchClientMessage, PatchUpstreamMessage],
           },
           http: false,
         },
@@ -206,6 +212,7 @@ export const MockChat = wsRule({
 ```typescript
 // override-proxy.config.ts
 import { defineConfig } from "./config.js";
+import { MockChat } from "./rules/ws/mock.js";
 
 export default defineConfig({
   servers: [
@@ -217,7 +224,7 @@ export default defineConfig({
           path: "/ws/mock-chat",
           ws: {
             mode: "mock",
-            rulesDir: "./rules/ws",
+            rules: [MockChat],
           },
           http: false,
         },
@@ -248,6 +255,7 @@ export const Heartbeat = wsConnectionRule({
 ```typescript
 // override-proxy.config.ts
 import { defineConfig } from "./config.js";
+import { Heartbeat } from "./rules/ws/heartbeat.js";
 
 export default defineConfig({
   servers: [
@@ -259,7 +267,7 @@ export default defineConfig({
           path: "/ws/mock-chat",
           ws: {
             mode: "mock",
-            rulesDir: "./rules/ws",
+            connectionRules: [Heartbeat],
           },
           http: false,
         },
@@ -489,7 +497,8 @@ export const APIKeyAuth = rule({
   methods: ["GET", "POST"],
   test: (req) => req.path.startsWith("/api/v1/"),
   handler: (req, res, next) => {
-    const apiKey = req.headers["x-api-key"] as string;
+    const header = req.headers["x-api-key"];
+    const apiKey = Array.isArray(header) ? header[0] : header;
 
     if (!apiKey) {
       return res.status(401).json({ error: "missing_api_key" });
@@ -531,7 +540,8 @@ export const AdminEndpoint = rule({
   methods: ["GET"],
   path: "/api/admin/stats",
   handler: (req, res) => {
-    const userRole = req.headers["x-user-role"] as string;
+    const header = req.headers["x-user-role"];
+    const userRole = Array.isArray(header) ? header[0] : header;
 
     if (userRole !== "admin") {
       return res.status(403).json({
@@ -759,7 +769,8 @@ export const ABTest = rule({
   methods: ["GET"],
   path: "/api/feature/new-ui",
   handler: (req, res) => {
-    const userId = req.headers["x-user-id"] as string;
+    const header = req.headers["x-user-id"];
+    const userId = Array.isArray(header) ? header[0] : header;
 
     if (!userId) {
       return res.status(400).json({ error: "missing_user_id" });
@@ -813,19 +824,16 @@ export const FeatureFlags = rule({
   handler: (req, res, next) => {
     const override = req.query["override"];
 
-    if (!override) {
+    if (typeof override !== "string") {
       // No override - proxy to real flags service
       return next();
     }
 
     // Parse override flags from query string
-    const overrideFlags = (override as string).split(",").reduce(
-      (acc, flag) => {
-        acc[flag] = true;
-        return acc;
-      },
-      {} as Record<string, boolean>,
-    );
+    const overrideFlags: Record<string, boolean> = {};
+    for (const flag of override.split(",")) {
+      overrideFlags[flag] = true;
+    }
 
     res.json({
       ...DEFAULT_FLAGS,
@@ -1226,12 +1234,16 @@ const ITEMS = Array.from({ length: 100 }, (_, i) => ({
   value: Math.random() * 1000,
 }));
 
+function queryString(value: unknown, fallback: string): string {
+  return typeof value === "string" ? value : fallback;
+}
+
 export const PaginatedList = rule({
   methods: ["GET"],
   path: "/api/items",
   handler: (req, res) => {
-    const page = parseInt((req.query.page as string) || "1", 10);
-    const limit = parseInt((req.query.limit as string) || "10", 10);
+    const page = parseInt(queryString(req.query.page, "1"), 10);
+    const limit = parseInt(queryString(req.query.limit, "10"), 10);
 
     const start = (page - 1) * limit;
     const end = start + limit;
@@ -1602,9 +1614,9 @@ curl http://localhost:4000/api/chain
 
 ## Testing Your Rules
 
-### Quick Test Script
+### Quick Smoke Script
 
-Save as `test-rules.sh`:
+Save as `smoke.sh`:
 
 ```bash
 #!/bin/bash
@@ -1641,8 +1653,8 @@ echo "All tests complete!"
 Run with:
 
 ```bash
-chmod +x test-rules.sh
-./test-rules.sh
+chmod +x smoke.sh
+./smoke.sh
 ```
 
 ---

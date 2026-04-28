@@ -222,12 +222,7 @@ function bridgeConnection({
       if (rule.enabled === false) continue;
       if (!(await rule.test(context))) continue;
 
-      logWebSocketMatch(
-        id,
-        "connect",
-        rule.name || "websocket",
-        routeRuntime.wsConnectionMetaMap.get(rule),
-      );
+      logWebSocketMatch(id, "connect", rule.name || "websocket");
 
       const setup = await rule.onConnect(context);
       if (setup) context.dispose(setup);
@@ -362,12 +357,7 @@ async function runRules({
 
     if (!(await rule.test(ctx))) continue;
 
-    logWebSocketMatch(
-      id,
-      direction,
-      rule.name || "websocket",
-      routeRuntime.wsMetaMap.get(rule),
-    );
+    logWebSocketMatch(id, direction, rule.name || "websocket");
 
     return {
       action: await rule.handler(ctx),

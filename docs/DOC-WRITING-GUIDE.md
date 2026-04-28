@@ -9,17 +9,19 @@ Best practices for writing and maintaining documentation in this project.
 **Write for people with context** - Assume readers have basic understanding of the project. Don't explain everything from scratch.
 
 ✅ Good:
+
 ```markdown
 ## Rule Loading Flow
 
-Rules are discovered via fast-glob, dynamically imported, and stored in the global overrides array.
+Rules are imported by config and attached to route transports.
 ```
 
 ❌ Avoid:
+
 ```markdown
 ## Rule Loading Flow
 
-This section explains how the rule loading mechanism works in override-proxy. When the server starts up, it needs to find all the rule files that users have created. To do this, we use a library called fast-glob which scans directories...
+This section explains how the rule loading mechanism works in override-proxy. When the server starts up, it reads the config file, sees which rule modules users imported, and stores the rule objects in the route runtime...
 ```
 
 **Why:** Readers can infer context. Verbose explanations slow them down.
@@ -31,18 +33,26 @@ This section explains how the rule loading mechanism works in override-proxy. Wh
 Titles should be **self-explanatory** without reading the content.
 
 ✅ Good:
+
 ```markdown
 ## Request Lifecycle
+
 ## Code Location Index
+
 ## Common Modification Tasks
+
 ## Extension Points
 ```
 
 ❌ Avoid:
+
 ```markdown
 ## Overview
+
 ## Details
+
 ## More Information
+
 ## Miscellaneous
 ```
 
@@ -55,6 +65,7 @@ Titles should be **self-explanatory** without reading the content.
 Remove unnecessary administrative content:
 
 ❌ **Never include:**
+
 - Table of Contents (use Markdown headers for navigation)
 - "Last updated: [date]" footers
 - "Author: [name]" sections
@@ -62,6 +73,7 @@ Remove unnecessary administrative content:
 - "Next Steps" navigation links at the end
 
 ✅ **Only include:**
+
 - Core content
 - Code examples
 - Tables/diagrams
@@ -75,13 +87,13 @@ Remove unnecessary administrative content:
 
 Use American English spelling consistently:
 
-| ✅ Use | ❌ Avoid |
-|--------|----------|
-| organize | organise |
-| color | colour |
+| ✅ Use   | ❌ Avoid  |
+| -------- | --------- |
+| organize | organise  |
+| color    | colour    |
 | behavior | behaviour |
-| optimize | optimise |
-| analyze | analyse |
+| optimize | optimise  |
+| analyze  | analyse   |
 
 **Tools:** Configure editor spell-checker to `en-US`.
 
@@ -96,26 +108,33 @@ When adding new content, **always ask:**
 #### Refactor Triggers
 
 **Trigger 1: Section Too Long**
+
 - If a section exceeds ~300 lines, split it
 - Create subsections or separate documents
 
 **Before:**
+
 ```markdown
 ## Examples
 
 ### 1. Basic Example
+
 [100 lines]
 
 ### 2. Advanced Example
+
 [100 lines]
 
 ### 3. Complex Example
+
 [100 lines]
 ...
+
 ### 27. Another Example
 ```
 
 **After:**
+
 ```markdown
 ## Examples
 
@@ -125,51 +144,68 @@ See [EXAMPLES.md](EXAMPLES.md) for comprehensive examples organized by scenario.
 ---
 
 **Trigger 2: Multiple Related Items**
+
 - If you have 3+ similar items, group them
 
 **Before:**
+
 ```markdown
 ## Creating Rules
+
 ...
 
 ## Deleting Rules
+
 ...
 
 ## Updating Rules
+
 ...
 
 ## Testing Rules
+
 ...
 ```
 
 **After:**
+
 ```markdown
 ## Rule Management
 
 ### Creating Rules
+
 ...
 
 ### Updating Rules
+
 ...
 
 ### Deleting Rules
+
 ...
 
 ### Testing Rules
+
 ...
 ```
 
 ---
 
 **Trigger 3: Nested Depth > 3**
+
 - If you have #### ##### ###### nesting, split the file
 
 **Before:**
+
 ```markdown
 ## Section
+
 ### Subsection
+
 #### Sub-subsection
+
 ##### Sub-sub-subsection
+
 ###### Too deep!
 ```
 
@@ -178,19 +214,27 @@ See [EXAMPLES.md](EXAMPLES.md) for comprehensive examples organized by scenario.
 ---
 
 **Trigger 4: Unrelated Content in Same File**
+
 - If sections serve different purposes, split them
 
 **Before (README.md):**
+
 ```markdown
 ## Quick Start
+
 ## Architecture Details
+
 ## API Reference
+
 ## Troubleshooting
+
 ## Internal Implementation
+
 ## Future Roadmap
 ```
 
 **After:**
+
 ```
 README.md → Quick Start, Overview
 ARCHITECTURE.md → Architecture, Implementation
@@ -219,16 +263,19 @@ docs/
 
 Start simple, link to details.
 
-```markdown
+````markdown
 ## Configuration
 
 Basic setup in `.env.local`:
+
 ```bash
 PORT=4000
 ```
+````
 
 For advanced options, see [CONFIGURATION.md](CONFIGURATION.md).
-```
+
+````
 
 **Strategy 3: Consolidate Duplicates**
 
@@ -255,33 +302,37 @@ Use formatting to guide the eye:
 ```markdown
 | Task | Tool | When to Use |
 |------|------|-------------|
-| Create rule | `/rule` | Always |
-| Debug rule | `/rule-diagnose` | When broken |
-```
+| Validate config | `pnpm exec tsx cli.ts validate` | Before serving |
+| Run focused test | `pnpm exec tsx tests/config.test.ts` | After config changes |
+````
 
 ❌ Avoid:
+
 ```markdown
-You can use /rule to create rules which is good when you want to make a new rule.
-You can use /rule-diagnose to debug rules when something is broken.
+You can use the validation command when you want to check config, and you can
+run tests when something changed.
 ```
 
 #### Use Code Blocks for Examples
 
 Always include:
+
 1. Context (what this does)
 2. Code
 3. Expected output (if relevant)
 
-```markdown
+````markdown
 Test the auth endpoint:
 
 ```bash
 curl http://localhost:4000/api/auth/me \
   -H "Authorization: Bearer token"
 ```
+````
 
 Expected: `200 OK` with user data
-```
+
+````
 
 #### Use Diagrams for Flow
 
@@ -294,9 +345,10 @@ flowchart LR
     Override --> Match{Matches?}
     Match -->|Yes| Return
     Match -->|No| Proxy
-```
+````
 
 ❌ Avoid:
+
 ```
 First the request comes in, then it checks the override rules.
 If it matches, it returns immediately. Otherwise, it proxies to upstream.
@@ -317,11 +369,13 @@ If it matches, it returns immediately. Otherwise, it proxies to upstream.
 Link to other docs when needed, but avoid link spam.
 
 ✅ Good:
+
 ```markdown
 For implementation patterns, see [PATTERNS.md](PATTERNS.md).
 ```
 
 ❌ Avoid:
+
 ```markdown
 See [ARCHITECTURE.md](ARCHITECTURE.md), [EXAMPLES.md](EXAMPLES.md),
 [PATTERNS.md](PATTERNS.md), [TOOLS.md](TOOLS.md), and [README.md](README.md)
@@ -335,24 +389,27 @@ for more information.
 ### 8. Code Examples Must Be Runnable
 
 Every code example should be:
+
 - **Complete** - No `...` or `// more code`
 - **Tested** - Actually works
 - **Minimal** - Only what's needed
 
 ✅ Good:
+
 ```typescript
 export const UserDetail = rule({
-  methods: ['GET'],
+  methods: ["GET"],
   path: /^\/api\/users\/(\d+)$/,
   handler: (req, res) => {
     const match = req.path.match(/^\/api\/users\/(\d+)$/);
-    const id = match ? match[1] : 'unknown';
+    const id = match ? match[1] : "unknown";
     res.json({ id, name: `User ${id}` });
   },
 });
 ```
 
 ❌ Avoid:
+
 ```typescript
 export const UserDetail = rule({
   // Configure your rule here
@@ -367,15 +424,16 @@ export const UserDetail = rule({
 
 ### 9. File Naming Conventions
 
-| File Type | Naming Pattern | Example |
-|-----------|---------------|---------|
-| Overview | `README.md` | Project root |
-| Specific topic | `TOPIC.md` | `ARCHITECTURE.md` |
-| Plural collections | `TOPICS.md` | `EXAMPLES.md`, `PATTERNS.md` |
-| How-to guides | `VERB-NOUN.md` | `DOC-WRITING-GUIDE.md` |
-| Reference | `API.md`, `REFERENCE.md` | API specs |
+| File Type          | Naming Pattern           | Example                      |
+| ------------------ | ------------------------ | ---------------------------- |
+| Overview           | `README.md`              | Project root                 |
+| Specific topic     | `TOPIC.md`               | `ARCHITECTURE.md`            |
+| Plural collections | `TOPICS.md`              | `EXAMPLES.md`, `PATTERNS.md` |
+| How-to guides      | `VERB-NOUN.md`           | `DOC-WRITING-GUIDE.md`       |
+| Reference          | `API.md`, `REFERENCE.md` | API specs                    |
 
 **Guidelines:**
+
 - Use UPPERCASE for top-level docs (README, ARCHITECTURE)
 - Use lowercase for auxiliary docs in subdirs (contributing.md, changelog.md)
 - Use hyphens, not underscores: `writing-guide.md` not `writing_guide.md`
@@ -387,6 +445,7 @@ export const UserDetail = rule({
 #### Small Projects (< 10 docs)
 
 Flat structure:
+
 ```
 project/
 ├── README.md
@@ -398,6 +457,7 @@ project/
 #### Medium Projects (10-30 docs)
 
 Group by purpose:
+
 ```
 project/
 ├── README.md
@@ -412,6 +472,7 @@ project/
 #### Large Projects (30+ docs)
 
 Deep hierarchy:
+
 ```
 project/
 ├── README.md
@@ -437,6 +498,7 @@ project/
 ### When to Update Docs
 
 Update docs **immediately** when:
+
 - ✅ Adding new feature → Update examples, patterns
 - ✅ Changing API → Update architecture, reference
 - ✅ Fixing bug → Update troubleshooting if pattern
@@ -454,6 +516,7 @@ Update docs **immediately** when:
 2. **AGENTS.md** - Update the Documentation Quick Links section with appropriate categorization
 
 **When to update indexes:**
+
 - ✅ Created new doc file → Add to both indexes
 - ✅ Renamed/moved doc file → Update paths in both indexes
 - ✅ Changed doc purpose → Update descriptions in both indexes
@@ -483,12 +546,14 @@ Before committing doc changes:
 ### Refactoring Schedule
 
 **Quarterly Review:**
+
 1. Check for duplicate content → Consolidate
 2. Check for outdated content → Update or remove
 3. Check for missing content → Add to backlog
 4. Check for poor structure → Refactor
 
 **Signs docs need refactoring:**
+
 - Files exceed 500 lines
 - Frequent "see also" links between same files
 - Sections with generic titles ("Other", "Miscellaneous")
@@ -513,16 +578,19 @@ PUT, PATCH, and DELETE. GET is used for retrieving data...
 
 **Fix:** Assume basic knowledge. Link to external docs for fundamentals.
 
-```markdown
+````markdown
 ## HTTP Methods
 
 Supported methods: GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS.
 
 Configure in the `methods` array:
+
 ```typescript
 rule({ methods: ['GET', 'POST'], ... })
 ```
-```
+````
+
+````
 
 ---
 
@@ -540,7 +608,7 @@ rule({ methods: ['GET', 'POST'], ... })
 
 ### 2025-01-13
 - Initial draft
-```
+````
 
 **Fix:** Use git history. Only track breaking changes if needed.
 
@@ -563,6 +631,7 @@ See the [old architecture doc](docs/old-arch.md) for details.
 **Problem:** Same information in multiple places, inconsistent versions.
 
 **Example:**
+
 - README says rules use `name` property
 - ARCHITECTURE says use export name
 - EXAMPLES shows both
@@ -577,27 +646,40 @@ See the [old architecture doc](docs/old-arch.md) for details.
 **Problem:** Adding new sections at the end without reorganizing.
 
 **Before:**
+
 ```markdown
 ## Section 1
+
 ## Section 2
+
 ## Section 3
+
 ## New Unrelated Thing (just added!)
+
 ## Another New Thing
+
 ## Yet Another Thing
 ```
 
 **After refactoring:**
+
 ```markdown
 ## Category A
+
 ### Section 1
+
 ### New Thing (moved here, related to A)
 
 ## Category B
+
 ### Section 2
+
 ### Another Thing (moved here, related to B)
 
 ## Category C
+
 ### Section 3
+
 ### Yet Another Thing (moved here, related to C)
 ```
 
@@ -631,7 +713,7 @@ See the [old architecture doc](docs/old-arch.md) for details.
 
 ### Example Template
 
-```markdown
+````markdown
 ### [Number]. [Short Description]
 
 **Scenario:** [When/why you'd use this]
@@ -639,17 +721,21 @@ See the [old architecture doc](docs/old-arch.md) for details.
 ```typescript
 // Full, runnable code
 ```
+````
 
 **Test:**
+
 ```bash
 curl http://localhost:4000/api/endpoint
 ```
 
 **Expected Output:**
+
 ```json
 { "result": "..." }
 ```
-```
+
+````
 
 ---
 
@@ -663,15 +749,17 @@ curl http://localhost:4000/api/endpoint
 ❌ **Avoid:**
 ```typescript
 // Bad example
-```
+````
 
 ✅ **Use:**
+
 ```typescript
 // Good example
 ```
 
 **Why:** [Explanation]
-```
+
+````
 
 ---
 
@@ -694,7 +782,7 @@ markdownlint docs/**/*.md
   "MD033": false,  # Allow HTML (for callouts)
   "MD041": false   # Don't require h1 first
 }
-```
+````
 
 ### Link Checkers
 
@@ -713,11 +801,7 @@ Configure VS Code spell checker:
 ```json
 {
   "cSpell.language": "en-US",
-  "cSpell.words": [
-    "override-proxy",
-    "dotenvx",
-    "nodemon"
-  ]
+  "cSpell.words": ["override-proxy", "dotenvx", "nodemon"]
 }
 ```
 
@@ -731,25 +815,31 @@ Configure VS Code spell checker:
 # Documentation
 
 ## Table of Contents
+
 1. Introduction
 2. Getting Started
 3. Advanced Topics
-...
+   ...
 
 ## 1. Introduction
+
 This is override-proxy...
 
 ## 2. Getting Started
+
 ...
 
 ## 15. Random Tips
+
 - Tip 1
 - Tip 2
 
 ## 16. More Examples
+
 ...
 
 ## 17. Troubleshooting
+
 ...
 
 Last updated: 2025-01-14
@@ -757,6 +847,7 @@ Author: Team
 ```
 
 **Problems:**
+
 - ❌ Table of Contents
 - ❌ Generic section titles
 - ❌ Unorganized (tips, examples, troubleshooting mixed)
@@ -767,7 +858,8 @@ Author: Team
 ### After (Good Structure)
 
 **README.md:**
-```markdown
+
+````markdown
 # override-proxy
 
 Override-first development server for API mocking.
@@ -778,17 +870,19 @@ Override-first development server for API mocking.
 pnpm install
 pnpm dev
 ```
+````
 
 ## Documentation
 
-| Document | Purpose |
-|----------|---------|
-| [ARCHITECTURE.md](docs/ARCHITECTURE.md) | System design |
-| [EXAMPLES.md](docs/EXAMPLES.md) | Copy-paste examples |
-| [TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | Common issues |
+| Document                                      | Purpose             |
+| --------------------------------------------- | ------------------- |
+| [ARCHITECTURE.md](docs/ARCHITECTURE.md)       | System design       |
+| [EXAMPLES.md](docs/EXAMPLES.md)               | Copy-paste examples |
+| [TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | Common issues       |
 
 ...
-```
+
+````
 
 **docs/EXAMPLES.md:**
 ```markdown
@@ -804,11 +898,12 @@ Practical examples organized by scenario.
 export const Hello = rule('GET', '/api/hello', (req, res) => {
   res.json({ message: 'Hello!' });
 });
-```
+````
 
 Test: `curl http://localhost:4000/api/hello`
 
 ...
+
 ```
 
 **Changes:**
@@ -833,3 +928,4 @@ Test: `curl http://localhost:4000/api/hello`
 > Will a developer with basic project knowledge understand this title and find what they need in < 30 seconds?
 
 If no, refactor.
+```

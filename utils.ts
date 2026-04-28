@@ -1,7 +1,6 @@
 import type { Method, MethodList, RuleHandler, RuleTest } from "./types.js";
 import type { IncomingHttpHeaders } from "node:http";
 import type WebSocket from "ws";
-import { resolve } from "pathe";
 
 export interface OverrideRule {
   name?: string;
@@ -9,12 +8,6 @@ export interface OverrideRule {
   methods: MethodList;
   test: RuleTest;
   handler: RuleHandler;
-}
-
-export interface OverrideRuleMeta {
-  file: string;
-  export?: string | undefined;
-  id: string;
 }
 
 export type WsMessageDirection = "client" | "upstream";
@@ -286,21 +279,6 @@ export function wsConnectionRule(
   };
 }
 
-export type RulesModule =
-  | { default?: OverrideRule | OverrideRule[]; rules?: OverrideRule[] }
-  | OverrideRule
-  | OverrideRule[];
-
-export function normalizeModule(m: RulesModule): OverrideRule[] {
-  if (Array.isArray(m)) return m.filter(isOverrideRule);
-  if (isOverrideRule(m)) return [m];
-  if (!isRecord(m)) return [];
-
-  const rules = collectOverrideRules(m["rules"]);
-  if (rules.length > 0) return rules;
-  return collectOverrideRules(m["default"]);
-}
-
 export function isOverrideRule(obj: unknown): obj is OverrideRule {
   return (
     isRecord(obj) &&
@@ -329,20 +307,6 @@ export function isWebSocketConnectionRule(
   );
 }
 
-export function parseRulesDir(argv: string[]): string | null {
-  const inlineArg = argv.find((a) => a.startsWith("--rules-dir="));
-  const inlineValue = inlineArg?.split("=").slice(1).join("=");
-  if (inlineValue) return resolve(inlineValue);
-
-  const argIndex = argv.indexOf("--rules-dir");
-  if (argIndex < 0) return null;
-
-  const value = argv[argIndex + 1];
-  if (!value || value.startsWith("--")) return null;
-
-  return resolve(value);
-}
-
 function isRuleConfig(value: unknown): value is RuleConfig {
   return isRecord(value) && typeof value["handler"] === "function";
 }
@@ -359,9 +323,4 @@ function isMethodList(value: unknown): value is MethodList {
       (method) => typeof method === "string" && toMethodOrNull(method),
     )
   );
-}
-
-function collectOverrideRules(value: unknown): OverrideRule[] {
-  if (Array.isArray(value)) return value.filter(isOverrideRule);
-  return isOverrideRule(value) ? [value] : [];
 }

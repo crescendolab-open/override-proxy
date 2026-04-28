@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
 import { tmpdir } from "node:os";
 import getPort, { portNumbers } from "get-port";
@@ -11,6 +11,7 @@ import {
   sortRoutes,
 } from "../route-matching.js";
 import { startConfiguredServers } from "../server-runtime.js";
+import type { OverrideRule } from "../utils.js";
 
 const sorted = sortRoutes([
   route("root", "/"),
@@ -42,22 +43,17 @@ assert.equal(
 const upstreamA = await startUpstream("api-upstream");
 const upstreamB = await startUpstream("root-upstream");
 const tempDir = await mkdtemp(join(tmpdir(), "override-proxy-routing-"));
-const rulesDir = join(tempDir, "rules");
 
 try {
-  await mkdir(rulesDir, { recursive: true });
-  await writeFile(
-    join(rulesDir, "api-rule.mjs"),
-    `
-export const ApiMock = {
-  name: "api-mock",
-  enabled: true,
-  methods: ["GET"],
-  test: (req) => req.path === "/api/mock",
-  handler: (_req, res) => res.json({ via: "api-rule" }),
-};
-`,
-  );
+  const apiMock: OverrideRule = {
+    name: "api-mock",
+    enabled: true,
+    methods: ["GET"],
+    test: (req) => req.path === "/api/mock",
+    handler: (_req, res) => {
+      res.json({ via: "api-rule" });
+    },
+  };
 
   const preferredPortA = await getPort({ port: portNumbers(49000, 49100) });
   const preferredPortB = await getPort({ port: portNumbers(49101, 49200) });
@@ -74,9 +70,8 @@ export const ApiMock = {
         routes: [
           {
             ...route("api", "/api", 0, upstreamA.url),
-            rulesDirs: [rulesDir],
             rewrite: { stripPrefix: true },
-            http: { enabled: true, rulesDirs: [rulesDir] },
+            http: { enabled: true, rules: [apiMock] },
           },
           route("root", "/", 0, upstreamB.url),
         ],
@@ -133,11 +128,11 @@ function route(
     path,
     priority,
     target,
-    rulesDirs: [],
+    rules: [],
     rewrite: null,
     http: {
       enabled: true,
-      rulesDirs: [],
+      rules: [],
     },
     ws: false,
   };

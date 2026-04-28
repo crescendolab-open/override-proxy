@@ -43,9 +43,9 @@ const tempDir = await mkdtemp(join(tmpdir(), "override-proxy-cli-"));
 try {
   const defaultConfig = join(tempDir, "override-proxy.config.mjs");
   const explicitConfig = join(tempDir, "explicit.config.mjs");
+  const factoryConfig = join(tempDir, "factory.config.mjs");
+  const asyncFactoryConfig = join(tempDir, "async-factory.config.mjs");
   const invalidConfig = join(tempDir, "invalid.config.mjs");
-  const multiServerConfig = join(tempDir, "multi.config.mjs");
-  const externalRulesDir = join(tempDir, "external-rules");
 
   await writeFile(
     defaultConfig,
@@ -64,21 +64,26 @@ export default {
 `,
   );
   await writeFile(
+    factoryConfig,
+    `
+export default ({ cwd }) => ({
+  servers: [{ routes: [{ path: "/", target: "http://factory.example/" + cwd.split("/").pop() }] }],
+});
+`,
+  );
+  await writeFile(
+    asyncFactoryConfig,
+    `
+export default async () => ({
+  servers: [{ routes: [{ path: "/", target: "http://async-factory.example" }] }],
+});
+`,
+  );
+  await writeFile(
     invalidConfig,
     `
 export default {
   servers: [{ name: "", routes: [{ path: "/" }] }],
-};
-`,
-  );
-  await writeFile(
-    multiServerConfig,
-    `
-export default {
-  servers: [
-    { routes: [{ path: "/", target: "http://one.example" }] },
-    { routes: [{ path: "/", target: "http://two.example" }] },
-  ],
 };
 `,
   );
@@ -98,45 +103,30 @@ export default {
     "http://explicit.example",
   );
 
+  const factory = await loadCliConfig(["--config", factoryConfig], {
+    cwd: tempDir,
+  });
+  assert.equal(
+    factory.normalizedConfig.servers[0]!.routes[0]!.target,
+    `http://factory.example/${tempDir.split("/").pop()}`,
+  );
+
+  const asyncFactory = await loadCliConfig(["--config", asyncFactoryConfig], {
+    cwd: tempDir,
+  });
+  assert.equal(
+    asyncFactory.normalizedConfig.servers[0]!.routes[0]!.target,
+    "http://async-factory.example",
+  );
+
   const legacyDir = await mkdtemp(join(tmpdir(), "override-proxy-legacy-"));
   try {
-    const inlineLegacy = await loadCliConfig(
-      [`--rules-dir=${externalRulesDir}`],
-      {
-        cwd: legacyDir,
-      },
-    );
-    assert.ok(inlineLegacy.legacy);
-    assert.equal(
-      inlineLegacy.normalizedConfig.servers[0]!.routes[0]!.rulesDirs[0],
-      externalRulesDir,
-    );
-
-    const spacedLegacy = await loadCliConfig(
-      ["--rules-dir", externalRulesDir],
-      {
-        cwd: legacyDir,
-      },
-    );
-    assert.ok(spacedLegacy.legacy);
-    assert.equal(
-      spacedLegacy.normalizedConfig.servers[0]!.routes[0]!.rulesDirs[0],
-      externalRulesDir,
-    );
+    const legacy = await loadCliConfig([], { cwd: legacyDir });
+    assert.ok(legacy.legacy);
+    assert.deepEqual(legacy.normalizedConfig.servers[0]!.routes[0]!.rules, []);
   } finally {
     await rm(legacyDir, { recursive: true, force: true });
   }
-
-  await assert.rejects(
-    () =>
-      loadCliConfig(
-        ["--config", multiServerConfig, `--rules-dir=${externalRulesDir}`],
-        {
-          cwd: tempDir,
-        },
-      ),
-    /multi-server config/,
-  );
 
   assert.equal(await runCli(["unknown"]), EXIT_CODES.usage);
   assert.equal(

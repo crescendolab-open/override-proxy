@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import type { Server } from "node:http";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import type { AddressInfo } from "node:net";
 import getPort, { portNumbers } from "get-port";
@@ -8,6 +8,7 @@ import { join } from "pathe";
 import WebSocket, { WebSocketServer, type RawData } from "ws";
 import type { NormalizedRoute } from "../config.js";
 import { startConfiguredServers } from "../server-runtime.js";
+import type { WebSocketConnectionRule, WebSocketRule } from "../utils.js";
 
 interface UpstreamMessage {
   path: string;
@@ -17,16 +18,75 @@ interface UpstreamMessage {
 }
 
 const tempDir = await mkdtemp(join(tmpdir(), "override-proxy-ws-bridge-"));
-const bridgeRulesDir = join(tempDir, "bridge");
-const skipRulesDir = join(tempDir, "skip");
-const mockRulesDir = join(tempDir, "mock");
-const connectionRulesDir = join(tempDir, "connection");
-const upstreamConnectionRulesDir = join(tempDir, "upstream-connection");
 const cleanupFile = join(tempDir, "cleanup.txt");
 const upstream = await startBridgeUpstream();
 
 try {
-  await writeRules();
+  const bridgeRules: WebSocketRule[] = [
+    {
+      name: "PatchClientMessage",
+      test: (ctx) =>
+        ctx.direction === "client" && ctx.jsonObject?.["type"] === "client",
+      handler: (ctx) =>
+        ctx.forward({ ...ctx.jsonObject, patchedByProxy: true }),
+    },
+    {
+      name: "PatchUpstreamMessage",
+      test: (ctx) =>
+        ctx.direction === "upstream" && ctx.text === "upstream:patched",
+      handler: () => ({ type: "forward", payload: "client:upstream:patched" }),
+    },
+  ];
+  const skipRules: WebSocketRule[] = [
+    {
+      name: "EmitAndSkip",
+      test: (ctx) => ctx.direction === "client" && ctx.text === "skip-me",
+      handler: (ctx) => {
+        ctx.emitToClient({ type: "proxy:skipped" });
+        return ctx.skip();
+      },
+    },
+  ];
+  const mockRules: WebSocketRule[] = [
+    {
+      name: "MockInvalidJson",
+      test: (ctx) =>
+        ctx.direction === "client" &&
+        ctx.text === "not-json" &&
+        ctx.json === null &&
+        ctx.jsonObject === null,
+      handler: (ctx) => {
+        ctx.emitToClient({ type: "proxy:invalid-json", raw: ctx.text });
+        return ctx.skip();
+      },
+    },
+  ];
+  const connectionRules: WebSocketConnectionRule[] = [
+    {
+      name: "WelcomeAndHeartbeat",
+      test: () => true,
+      onConnect: (ctx) => {
+        ctx.client.send({
+          type: "proxy:welcome",
+          path: ctx.path,
+          readyState: ctx.client.readyState,
+        });
+        ctx.every(20, () => {
+          ctx.client.send({ type: "proxy:tick" });
+        });
+        return () => writeFile(cleanupFile, "cleaned");
+      },
+    },
+  ];
+  const upstreamConnectionRules: WebSocketConnectionRule[] = [
+    {
+      name: "SendToUpstreamOnConnect",
+      test: (ctx) => ctx.upstream !== null,
+      onConnect: (ctx) => {
+        ctx.upstream?.send({ type: "proxy:connect-upstream" });
+      },
+    },
+  ];
 
   const preferredPort = await getPort({ port: portNumbers(49301, 49400) });
   const unavailableUpstreamPort = await getPort({
@@ -43,28 +103,29 @@ try {
         cors: { origins: true },
         control: false,
         routes: [
-          route("bridge", "/ws/bridge", "bridge", upstream.url, [
-            bridgeRulesDir,
-          ]),
-          route("skip", "/ws/skip", "bridge", upstream.url, [skipRulesDir]),
-          route("mock", "/ws/mock", "mock", null, [mockRulesDir]),
-          route("connect-mock", "/ws/connect-mock", "mock", null, [
-            connectionRulesDir,
-          ]),
+          route("bridge", "/ws/bridge", "bridge", upstream.url, {
+            rules: bridgeRules,
+          }),
+          route("skip", "/ws/skip", "bridge", upstream.url, {
+            rules: skipRules,
+          }),
+          route("mock", "/ws/mock", "mock", null, { rules: mockRules }),
+          route("connect-mock", "/ws/connect-mock", "mock", null, {
+            connectionRules,
+          }),
           route(
             "connect-upstream",
             "/ws/connect-upstream",
             "bridge",
             upstream.url,
-            [upstreamConnectionRulesDir],
+            { connectionRules: upstreamConnectionRules },
           ),
-          route("binary", "/ws/binary", "bridge", upstream.url, []),
+          route("binary", "/ws/binary", "bridge", upstream.url),
           route(
             "upstream-fail",
             "/ws/upstream-fail",
             "bridge",
             `ws://127.0.0.1:${unavailableUpstreamPort}`,
-            [],
           ),
         ],
       },
@@ -92,115 +153,30 @@ try {
   await rm(tempDir, { recursive: true, force: true });
 }
 
-async function writeRules(): Promise<void> {
-  await mkdir(bridgeRulesDir, { recursive: true });
-  await mkdir(skipRulesDir, { recursive: true });
-  await mkdir(mockRulesDir, { recursive: true });
-  await mkdir(connectionRulesDir, { recursive: true });
-  await mkdir(upstreamConnectionRulesDir, { recursive: true });
-
-  await writeFile(
-    join(bridgeRulesDir, "bridge.js"),
-    `
-export const PatchClientMessage = {
-  test: (ctx) => ctx.direction === "client" && ctx.jsonObject?.type === "client",
-  handler: (ctx) => ctx.forward({ ...ctx.jsonObject, patchedByProxy: true }),
-};
-
-export const PatchUpstreamMessage = {
-  test: (ctx) => ctx.direction === "upstream" && ctx.text === "upstream:patched",
-  handler: () => ({ type: "forward", payload: "client:upstream:patched" }),
-};
-`,
-  );
-
-  await writeFile(
-    join(skipRulesDir, "skip.js"),
-    `
-export const EmitAndSkip = {
-  test: (ctx) => ctx.direction === "client" && ctx.text === "skip-me",
-  handler: (ctx) => {
-    ctx.emitToClient({ type: "proxy:skipped" });
-    return ctx.skip();
-  },
-};
-`,
-  );
-
-  await writeFile(
-    join(mockRulesDir, "mock.js"),
-    `
-export const MockInvalidJson = {
-  test: (ctx) =>
-    ctx.direction === "client" &&
-    ctx.text === "not-json" &&
-    ctx.json === null &&
-    ctx.jsonObject === null,
-  handler: (ctx) => {
-    ctx.emitToClient({ type: "proxy:invalid-json", raw: ctx.text });
-    return ctx.skip();
-  },
-};
-`,
-  );
-
-  await writeFile(
-    join(connectionRulesDir, "connection.js"),
-    `
-import { writeFile } from "node:fs/promises";
-
-export const WelcomeAndHeartbeat = {
-  enabled: true,
-  test: () => true,
-  onConnect: (ctx) => {
-    ctx.client.send({
-      type: "proxy:welcome",
-      path: ctx.path,
-      readyState: ctx.client.readyState,
-    });
-    ctx.every(20, () => {
-      ctx.client.send({ type: "proxy:tick" });
-    });
-    return () => writeFile(${JSON.stringify(cleanupFile)}, "cleaned");
-  },
-};
-`,
-  );
-
-  await writeFile(
-    join(upstreamConnectionRulesDir, "upstream.js"),
-    `
-export const SendToUpstreamOnConnect = {
-  enabled: true,
-  test: (ctx) => ctx.upstream !== null,
-  onConnect: (ctx) => {
-    ctx.upstream?.send({ type: "proxy:connect-upstream" });
-  },
-};
-`,
-  );
-}
-
 function route(
   name: string,
   path: NormalizedRoute["path"],
   mode: "bridge" | "mock",
   target: string | null,
-  rulesDirs: string[],
+  ws: {
+    rules?: WebSocketRule[];
+    connectionRules?: WebSocketConnectionRule[];
+  } = {},
 ): NormalizedRoute {
   return {
     name,
     path,
     priority: 0,
     target: null,
-    rulesDirs: [],
+    rules: [],
     rewrite: null,
     http: false,
     ws: {
       enabled: true,
       mode,
       target,
-      rulesDirs,
+      rules: ws.rules ?? [],
+      connectionRules: ws.connectionRules ?? [],
     },
   };
 }

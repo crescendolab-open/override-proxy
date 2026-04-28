@@ -6,44 +6,32 @@ Key features:
 
 - Override-first: if a rule matches, respond immediately; otherwise proxy.
 - Multi-server, route-scoped config with root and subdirectory routes.
-- Dynamic HTTP and WebSocket rule loading from rule directories.
+- Inline HTTP and WebSocket rules through config imports.
 - Raw WebSocket direct proxy or bridge mode with bidirectional message actions.
 - CLI entry with config discovery, `serve`, `validate`, and legacy fallback.
 - Layered environment loading via `dotenvx` (`.env.local` then `.env.default`).
 
 ## Documentation
 
-| Document                                                                 | Purpose                                                 |
-| ------------------------------------------------------------------------ | ------------------------------------------------------- |
-| [README.md](README.md)                                                   | User guide and overview (you are here)                  |
-| [AGENTS.md](AGENTS.md)                                                   | Detailed guide for AI agents                            |
-| [docs/TOOLS.md](docs/TOOLS.md)                                           | Development tools (Claude Code commands + bash scripts) |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)                             | Visual diagrams and code location index                 |
-| [docs/design/config.md](docs/design/config.md)                           | Config model for multi-server routing                   |
-| [docs/design/websocket.md](docs/design/websocket.md)                     | WebSocket proxy and rule semantics                      |
-| [docs/design/cli.md](docs/design/cli.md)                                 | CLI behavior                                            |
-| [docs/design/implementation-plan.md](docs/design/implementation-plan.md) | Ordered implementation checklist                        |
-| [docs/EXAMPLES.md](docs/EXAMPLES.md)                                     | Copy-paste examples for common scenarios                |
-| [docs/PATTERNS.md](docs/PATTERNS.md)                                     | Best practices and common pitfalls                      |
-| [docs/DOC-WRITING-GUIDE.md](docs/DOC-WRITING-GUIDE.md)                   | Documentation writing standards (for contributors)      |
+| Document                                                                 | Purpose                                            |
+| ------------------------------------------------------------------------ | -------------------------------------------------- |
+| [README.md](README.md)                                                   | User guide and overview (you are here)             |
+| [AGENTS.md](AGENTS.md)                                                   | Detailed guide for AI agents                       |
+| [docs/TOOLS.md](docs/TOOLS.md)                                           | Development commands and verification workflow     |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)                             | Visual diagrams and code location index            |
+| [docs/design/config.md](docs/design/config.md)                           | Config model for multi-server routing              |
+| [docs/design/websocket.md](docs/design/websocket.md)                     | WebSocket proxy and rule semantics                 |
+| [docs/design/cli.md](docs/design/cli.md)                                 | CLI behavior                                       |
+| [docs/design/implementation-plan.md](docs/design/implementation-plan.md) | Ordered implementation checklist                   |
+| [docs/EXAMPLES.md](docs/EXAMPLES.md)                                     | Copy-paste examples for common scenarios           |
+| [docs/PATTERNS.md](docs/PATTERNS.md)                                     | Best practices and common pitfalls                 |
+| [docs/DOC-WRITING-GUIDE.md](docs/DOC-WRITING-GUIDE.md)                   | Documentation writing standards (for contributors) |
 
 ## Development Tools
 
-**Claude Code Commands** (custom slash commands):
-
-- `/rule` - Create new rules with templates
-- `/rule-toggle` - Enable/disable rule groups
-- `/rule-diagnose` - Debug non-working rules
-- `/rule-test` - Generate and run tests
-- `/migrate-from-msw` - Convert MSW handlers
-
-**Bash Scripts**:
-
-- `scripts/toggle-rules.sh` - Quick enable/disable
-- `scripts/test-rules.sh` - Automated testing
-- `scripts/list-rules.sh` - List all rules
-
-See [docs/TOOLS.md](docs/TOOLS.md) for details.
+The workflow is config-driven: import rule values in config, validate the config,
+then run focused tests or the built CLI. See [docs/TOOLS.md](docs/TOOLS.md) for
+the current command list.
 
 ## Quick Start
 
@@ -131,12 +119,14 @@ Default config discovery checks the current working directory for:
 
 Local config names are ignored by the repository's default `.gitignore`.
 
-If no config file exists, override-proxy runs in legacy mode using `PROXY_TARGET`, `PORT`, `CORS_ORIGINS`, the built-in `rules/` directory, and optional `--rules-dir`.
+If no config file exists, override-proxy runs in legacy proxy mode using `PROXY_TARGET`, `PORT`, and `CORS_ORIGINS`.
 
 Example multi-route config:
 
 ```ts
 import { defineConfig } from "./config.js";
+import { ApiUser } from "./rules/api-user.js";
+import { RootFallback } from "./rules/root-fallback.js";
 
 export default defineConfig({
   servers: [
@@ -149,14 +139,18 @@ export default defineConfig({
           name: "api",
           path: "/api",
           target: "https://api.example.com",
-          rulesDir: "./rules/api",
+          http: {
+            rules: [ApiUser],
+          },
           rewrite: { stripPrefix: true },
         },
         {
           name: "root",
           path: "/",
           target: "https://www.example.com",
-          rulesDir: "./rules/root",
+          http: {
+            rules: [RootFallback],
+          },
         },
       ],
     },
@@ -166,9 +160,28 @@ export default defineConfig({
 
 Routes are matched by pathname with priority, longest segment-aware prefix, declaration order, and root fallback.
 
+Config exports can be objects, factories, or async factories:
+
+```ts
+import { readFile } from "node:fs/promises";
+import { LocalRule } from "./rules/local.js";
+
+export default defineConfig(async () => {
+  const fixture = JSON.parse(await readFile("./fixtures/user.json", "utf8"));
+
+  return {
+    servers: [
+      {
+        routes: [{ path: "/", http: { rules: [LocalRule(fixture)] } }],
+      },
+    ],
+  };
+});
+```
+
 ## Rule System
 
-Rule files are loaded from `rules/**/*.ts|mts|js|mjs`, excluding declaration files and dot-prefixed files or folders.
+Rules are ordinary JavaScript values attached to config. Put them inline or import them from any module; config may be an object, function, or async function, so filesystem reads and other setup belong in userland config code.
 
 Interface:
 
@@ -206,14 +219,11 @@ Constraints:
 - If `methods` omitted in config form it defaults to `["GET"]`.
 - First matching enabled rule short-circuits.
 
-Export patterns:
+Authoring patterns:
 
-1. `export const SomeRule = rule(...)` (recommended; export name becomes rule name)
-2. Multiple named exports per file (all collected)
-3. Legacy: `export default rule(...)` or `export const rules = [ rule(...), ... ]` (still supported)
-4. Any other named export that is an `OverrideRule` (or an array of them) will be loaded.
-
-> Naming: when using named exports, the export identifier overrides any `name` set inside `rule()` options (the `name` option is deprecated).
+1. `export const SomeRule = rule(...)` and import it from config.
+2. Export arrays for scenario packs, then spread them into `http.rules` or `ws.rules`.
+3. Use `name` when logs need a stable display value; otherwise the helper derives one from `path` when possible.
 
 ## WebSocket Rules
 
@@ -288,7 +298,12 @@ export default rule({
   path: /^\/api\/users\/(\d+)$/,
   methods: ["GET"],
   handler: (req, res) => {
-    const id = req.path.match(/^\/api\/users\/(\d+)$/)![1];
+    const match = /^\/api\/users\/(\d+)$/.exec(req.path);
+    if (!match) {
+      res.status(404).json({ error: "not_found" });
+      return;
+    }
+    const [, id] = match;
     res.json({ id, name: `User ${id}`, from: "override" });
   },
 });
@@ -334,10 +349,10 @@ Logging pattern: `[id] -> METHOD path` / `match ruleName` / completion line with
 
 ## Development Workflow
 
-1. Add / edit files under `rules/`
-2. Save → nodemon restarts
-3. Inspect startup log for loaded overrides
-4. Send requests to validate
+1. Add or edit rule modules.
+2. Import the active rules from `override-proxy.config.ts`.
+3. Run `pnpm exec tsx cli.ts validate`.
+4. Start with `pnpm dev` and send requests to validate behavior.
 
 Change upstream: set `PROXY_TARGET` in `.env.local`  
 Restrict CORS: `CORS_ORIGINS=http://localhost:3000,https://dev.example.com`
@@ -353,11 +368,8 @@ Restrict CORS: `CORS_ORIGINS=http://localhost:3000,https://dev.example.com`
 ├─ http-app.ts
 ├─ ws-direct-proxy.ts
 ├─ ws-bridge.ts
-├─ rule-loader.ts
 ├─ main.ts
 ├─ utils.ts
-├─ rules/
-│  └─ _demo.ts
 ├─ tests/
 ├─ .env.default
 ├─ package.json
@@ -393,12 +405,12 @@ WebSocket mock event: `ctx.emitToClient({ type: "proxy:ready" }); return ctx.ski
 
 ## Rule Organization & Archival
 
-You can treat `rules/` as a shared, modular catalog of partial overrides. Simple conventions keep it clean and make whole scenario packs easy to toggle.
+You can still keep rule modules under `rules/`, but runtime does not scan that directory. Config decides exactly which rule values are active.
 
 ### 11.1 Group Related Rules
 
 - Group by feature / domain / scenario using either subfolders _and/or_ multi-export files.
-- Example: consolidate stable org endpoints into `rules/commerce/org1.ts` with several named exports, and chat endpoints into `rules/commerce/chat.ts`.
+- Import the packs you want in `override-proxy.config.ts`.
 
 ### 11.2 Disable Single Rule
 
@@ -408,64 +420,48 @@ To temporarily disable a single rule without deleting it, add `enabled: false` t
 export const UserDetail = rule({
   methods: ['GET'],
   path: /^\/api\/users\/\d+$/,
-  enabled: false,  // Rule is disabled but still shows in logs as "(off)"
+  enabled: false,
   handler: (req, res) => res.json({ ... })
 });
 ```
 
-The rule file is still imported and appears in startup logs marked as `(off)`, but won't match requests.
+The rule remains in config but won't match requests.
 
-### 11.3 Disable an Entire Group (Dot‑prefix)
+### 11.3 Disable an Entire Group
 
-The loader ignores dotfiles & dotfolders. Rename a folder to start with `.` to deactivate every rule inside without deleting them:
+Remove that pack from the config array, or branch inside an async config factory:
 
-```text
-rules/demo-onboarding/    # active
-rules/.demo-onboarding/   # inactive (ignored)
+```ts
+const rules = process.env["MOCK_PACK"] === "checkout" ? checkoutRules : [];
 ```
 
-Remove the leading dot to reactivate.
+### 11.4 Shareable by Design
 
-### 11.4 Archive Packs in `.trash`
-
-Move old / seldom used sets into `rules/.trash/<pack>/`. Because `.trash` begins with a dot, all contents are ignored.
-
-```text
-rules/.trash/legacy-campaign/*
-```
-
-Bring them back by moving the folder out (and removing any leading dot).
-
-### 11.5 Shareable by Design
-
-- Committed (non-sensitive) rule files are instantly shared—teammates restart and get the same overrides.
+- Committed config and rule modules are instantly shared—teammates restart and get the same overrides.
 - Avoid secrets / PII in responses. Use env vars or synthetic placeholders if needed.
-- Scenario-oriented packs let you prepare multiple demo states and enable exactly one (or a few) by folder name.
+- Scenario-oriented packs let you prepare multiple demo states and enable exactly one by config import or factory branch.
 
-### 11.6 Personal / WIP Rules
+### 11.5 Personal / WIP Rules
 
-- For scratch work you _do not_ want loaded or committed, use a dot-prefixed folder: `rules/.wip/`.
-- Optionally list it in `.gitignore` so accidental commits are avoided.
+- For scratch work you _do not_ want committed, use `override-proxy.local.config.ts` and keep it git-ignored.
 
-### 11.7 Naming Guidance
+### 11.6 Naming Guidance
 
-- Folder names: concise, kebab-case domain or scenario (`billing-refunds`, `chat-surge-test`).
+- Module names: concise, kebab-case domain or scenario (`billing-refunds`, `chat-surge-test`).
 - Rule `name` (shown in logs): stable identifier (PascalCase or kebab-case) reflecting purpose.
 
-### 11.8 Quick Lifecycle Table
+### 11.7 Quick Lifecycle Table
 
 | Action              | Steps                                 |
 | ------------------- | ------------------------------------- |
-| Add feature pack    | Create folder, add rule files, commit |
+| Add feature pack    | Create module, import rules in config |
 | Disable single rule | Add `enabled: false` to rule config   |
-| Disable rule group  | Rename folder to `.folderName`        |
-| Archive             | Move into `rules/.trash/<folder>`     |
-| Restore             | Move back / remove leading dot        |
-| Share               | Push & teammates restart proxy        |
+| Disable rule group  | Remove pack from config or branch env |
+| Share               | Push config/rule modules and restart  |
 
-### 11.9 Why Folders over Config Flags?
+### 11.8 Why Inline over Runtime Scanning?
 
-This keeps the runtime loader trivial (no registry/state) while still giving coarse-grained enable/disable. Git diffs also remain obvious.
+Inline config keeps runtime simple and makes TypeScript point directly at missing imports, wrong rule shapes, and dead code.
 
 ## Comparison with MSW
 
@@ -493,7 +489,7 @@ This keeps the runtime loader trivial (no registry/state) while still giving coa
 5. Flexible rules: an override is just an Express handler—inject latency, errors, dynamic data, conditional passthrough.
 6. Layered env loading: safe defaults in `.env.default`, secrets in `.env.local` (git‑ignored).
 7. Evolution friendly: ideal anchor point for future record & replay, metrics, runtime toggles, chaos/fault injection, priority control.
-8. Short learning curve: minimal API (`rule()` + file export); experienced Node/Express users are productive immediately.
+8. Short learning curve: minimal API (`defineConfig()` + `rule()` / `wsRule()`); experienced Node/Express users are productive immediately.
 
 ### Typical combined workflow with MSW
 

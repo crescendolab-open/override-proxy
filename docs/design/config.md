@@ -26,6 +26,8 @@ Rules should not need to know the full topology. They receive a stable context f
 
 ```ts
 import { defineConfig } from "override-proxy";
+import { GetUser } from "./rules/get-user.js";
+import { RootHtml } from "./rules/root-html.js";
 
 export default defineConfig({
   servers: [
@@ -41,13 +43,17 @@ export default defineConfig({
           name: "api",
           path: "/api",
           target: "https://api.example.com",
-          rulesDir: "./rules/api",
+          http: {
+            rules: [GetUser],
+          },
         },
         {
           name: "root",
           path: "/",
           target: "https://www.example.com",
-          rulesDir: "./rules/root",
+          http: {
+            rules: [RootHtml],
+          },
         },
       ],
     },
@@ -55,7 +61,21 @@ export default defineConfig({
 });
 ```
 
-`defineConfig()` is a typed identity helper. It should not perform IO, import rules, or mutate config.
+`defineConfig()` is a typed identity helper. It accepts a config object, a factory, or an async factory. Users own imports and IO:
+
+```ts
+import { readFile } from "node:fs/promises";
+import { userRule } from "./rules/user.js";
+
+export default defineConfig(async () => {
+  const fixture = JSON.parse(await readFile("./fixtures/user.json", "utf8"));
+  return {
+    servers: [
+      { routes: [{ path: "/api", http: { rules: [userRule(fixture)] } }] },
+    ],
+  };
+});
+```
 
 ## Normalized Config
 
@@ -82,7 +102,7 @@ interface NormalizedRoute {
   path: `/${string}`;
   priority: number;
   target: string | null;
-  rulesDirs: string[];
+  rules: OverrideRule[];
   rewrite: RouteRewrite | null;
   http: NormalizedHttpTransport;
   ws: NormalizedWsTransport | false;
@@ -91,7 +111,6 @@ interface NormalizedRoute {
 
 Normalization should:
 
-- Resolve relative paths from the config file directory.
 - Fill defaults.
 - Sort routes.
 - Validate duplicate names and route conflicts.
@@ -126,10 +145,10 @@ server main
   port = PORT || 4000
   route /
     target = PROXY_TARGET || https://pokeapi.co/api/v2/
-    rulesDirs = [--rules-dir if present, built-in rules/]
+    rules = []
 ```
 
-Legacy mode must preserve current behavior unless a future major version changes the contract.
+Legacy mode is proxy-only. Override rules belong in config so users can import or build them directly.
 
 ## Precedence
 
@@ -229,15 +248,15 @@ Startup logs should print normalized server and route order.
 
 ## Use Cases
 
-| Case                           | Description                                                                    |
-| ------------------------------ | ------------------------------------------------------------------------------ |
-| Legacy single server           | No config file; use env and built-in `rules/` exactly like the current project |
-| Single server, multiple routes | One local port serves `/api`, `/auth`, and `/` with different targets          |
-| Multiple local servers         | One process starts separate local ports for independent apps or backends       |
-| Route-scoped overrides         | `/api` rules do not affect `/` or `/auth` traffic                              |
-| Root fallback                  | `/` catches requests that do not match more specific routes                    |
-| External config project        | CLI runs from another cwd and resolves relative rule paths correctly           |
-| Control endpoints              | Operators can inspect routes and rules without colliding with user traffic     |
+| Case                           | Description                                                                |
+| ------------------------------ | -------------------------------------------------------------------------- |
+| Legacy single server           | No config file; use env to proxy one root route                            |
+| Single server, multiple routes | One local port serves `/api`, `/auth`, and `/` with different targets      |
+| Multiple local servers         | One process starts separate local ports for independent apps or backends   |
+| Route-scoped overrides         | `/api` rules do not affect `/` or `/auth` traffic                          |
+| Root fallback                  | `/` catches requests that do not match more specific routes                |
+| Inline imported rules          | Config imports exactly the rule modules it wants to run                    |
+| Control endpoints              | Operators can inspect routes and rules without colliding with user traffic |
 
 ## Validation Cases
 
@@ -251,5 +270,5 @@ Startup logs should print normalized server and route order.
 | Duplicate server names                          | Validation error                                            |
 | Control prefix conflicts with a user route      | Validation error                                            |
 | Multiple servers use same preferred port        | Validation warning or port fallback, based on server config |
-| Config contains relative `rulesDir`             | Path resolves from config file directory                    |
+| Async config imports or reads files             | Factory resolves before normalization                       |
 | Config mode uses `--port` with multiple servers | Validation error unless server name is specified            |

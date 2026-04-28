@@ -24,7 +24,7 @@ rules/
 └── everything.ts        # 50 different endpoints in one file
 ```
 
-**Why:** Easier to locate, modify, and disable specific mocks.
+**Why:** Easier to locate, modify, and compose specific mocks in config.
 
 ---
 
@@ -51,7 +51,7 @@ rules/
 
 **Benefits:**
 
-- Easy to disable entire features (rename folder to `.auth/`)
+- Easy to compose feature packs through config imports
 - Clear ownership and responsibility
 - Better discoverability
 
@@ -68,11 +68,11 @@ rules/
 │   └── error-cases.ts
 ├── dev/                # Development overrides
 │   └── fast-responses.ts
-└── .staging/           # Disabled - staging overrides
+└── staging/            # Imported only by staging config
     └── slow-network.ts
 ```
 
-**Use case:** Switch between different mock scenarios by renaming folders.
+**Use case:** Switch between different mock scenarios by choosing imports in `override-proxy.local.config.ts`.
 
 ---
 
@@ -149,6 +149,9 @@ rules/
 Use specific prefixes for API areas and keep `/` last as the fallback route.
 
 ```typescript
+import { ApiRule } from "./rules/api.js";
+import { RootRule } from "./rules/root.js";
+
 export default defineConfig({
   servers: [
     {
@@ -157,13 +160,13 @@ export default defineConfig({
           name: "api",
           path: "/api",
           target: "https://api.example.com",
-          rulesDir: "./rules/api",
+          http: { rules: [ApiRule] },
         },
         {
           name: "root",
           path: "/",
           target: "https://www.example.com",
-          rulesDir: "./rules/root",
+          http: { rules: [RootRule] },
         },
       ],
     },
@@ -173,22 +176,25 @@ export default defineConfig({
 
 Routes are sorted by priority, longest segment-aware prefix, declaration order, and root fallback. Do not rely on query strings for route selection; queries belong in rule `test()` logic.
 
-### Pattern 7: Put Shared Rules at the Route Level
+### Pattern 7: Import Rule Packs Explicitly
 
-Route-level `rulesDir` is included by both HTTP and WebSocket transports. Use transport-specific directories only when the logic is specific to one protocol.
+Config owns rule composition. Import shared rule packs once, then attach the same values to the transports that need them.
 
 ```typescript
+import { SharedHttpRule } from "./rules/chat-shared.js";
+import { ChatHttpRule } from "./rules/chat-http.js";
+import { ChatWsRule } from "./rules/chat-ws.js";
+
 {
   path: '/chat',
   target: 'https://api.example.com',
-  rulesDir: './rules/chat-shared',
   http: {
-    rulesDir: './rules/chat-http',
+    rules: [SharedHttpRule, ChatHttpRule],
   },
   ws: {
     mode: 'bridge',
     target: 'wss://api.example.com',
-    rulesDir: './rules/chat-ws',
+    rules: [ChatWsRule],
   },
 }
 ```
@@ -279,8 +285,8 @@ If Socket.IO support is needed later, add a dedicated adapter instead of overloa
 | Feature group     | `{feature}/` folder         | `auth/`, `commerce/`                 |
 | Helpers/utilities | `_{name}.ts` or `_helpers/` | `_validators.ts`, `_helpers/auth.ts` |
 | Test data         | `_{resource}-data.ts`       | `_users-data.ts`                     |
-| Archived          | `.trash/{name}/`            | `.trash/old-feature/`                |
-| WIP/Personal      | `.wip/` or `.{name}/`       | `.wip/experimental.ts`               |
+| Archived          | `archive/{name}/`           | `archive/old-feature/`               |
+| WIP/Personal      | local config file           | `override-proxy.local.config.ts`     |
 
 **Case:** kebab-case for files, PascalCase for exports.
 
@@ -306,7 +312,8 @@ export const Handler = rule(...);
 export const Temp = rule(...);
 ```
 
-**Principle:** Export name becomes the rule name in logs. Make it descriptive and unique.
+**Principle:** Export names make config imports readable. Use the rule `name`
+option when logs need a stable display value.
 
 ---
 
@@ -324,42 +331,40 @@ export const Temp = rule(...);
 
 ---
 
-### Folder Naming
+### Module Naming
 
-| Purpose        | Pattern                   | Example                                 |
-| -------------- | ------------------------- | --------------------------------------- |
-| Feature domain | lowercase, kebab-case     | `user-management/`, `order-processing/` |
-| Environment    | lowercase                 | `dev/`, `staging/`, `demo/`             |
-| Disabled       | `.{name}/`                | `.old-feature/`, `.experimental/`       |
-| Archive        | `.trash/{name}/`          | `.trash/2024-q1/`                       |
-| Personal       | `.{initials}/` or `.wip/` | `.john/`, `.wip/`                       |
+| Purpose        | Pattern               | Example                                 |
+| -------------- | --------------------- | --------------------------------------- |
+| Feature domain | lowercase, kebab-case | `user-management/`, `order-processing/` |
+| Environment    | lowercase             | `dev/`, `staging/`, `demo/`             |
+| Personal       | local config branch   | `override-proxy.local.config.ts`        |
 
 ---
 
 ### Toggle Methods
 
-Two ways to disable rules:
+Two config-driven ways to disable rules:
 
-| Method            | Scope        | File Import | Log Display   | Use Case                |
-| ----------------- | ------------ | ----------- | ------------- | ----------------------- |
-| `enabled: false`  | Single rule  | ✅ Yes      | Shows "(off)" | Quick toggle, debugging |
-| Dot-prefix folder | Entire group | ❌ No       | Not listed    | Archive, experiments    |
+| Method             | Scope        | Import | Use Case                |
+| ------------------ | ------------ | ------ | ----------------------- |
+| `enabled: false`   | Single rule  | Yes    | Quick toggle, debugging |
+| Conditional config | Rule pack    | Maybe  | Scenarios, experiments  |
+| Remove from config | Rule or pack | No     | Archive, cleanup        |
 
 **Example:**
 
 ```typescript
 // Single rule toggle
 export const Debug = rule({
-  enabled: false,  // Quick disable
+  enabled: false,
   path: '/api/debug',
   handler: ...
 });
 ```
 
-```bash
-# Group toggle (CLI tool)
-./scripts/toggle-rules.sh disable experimental
-# Renames: rules/experimental/ → rules/.experimental/
+```typescript
+const checkoutRules =
+  process.env["MOCK_PACK"] === "checkout" ? CheckoutRules : [];
 ```
 
 ---
@@ -402,13 +407,8 @@ export const AllUsers = rule({
 });
 ```
 
-**Or:** Use separate files and rely on alphabetical loading.
-
-```
-rules/
-├── users-999-special.ts   # Loads first alphabetically
-└── users-generic.ts       # Loads second
-```
+**Or:** Keep rules in separate modules and order the imported values explicitly
+in `http.rules`.
 
 ---
 
@@ -589,38 +589,32 @@ export const Fetch = rule("GET", "/api/data", async (req, res) => {
 
 ### Pitfall 8: Confusing Disable Methods
 
-❌ **Problem:** Mixing or misunderstanding the two ways to disable rules.
+❌ **Problem:** Expecting folder names to control runtime behavior.
 
 **Two disable methods:**
 
 1. **Single rule**: `enabled: false` in rule config
-   - File still imports
-   - Rule shows in logs as "(off)"
+   - Rule remains in the config array
    - Quick toggle without file changes
 
-2. **Entire group**: Dot-prefix folder name
-   - Files not imported at all
-   - No log entries
-   - Clean for archived/experimental code
+2. **Rule pack**: choose imports in config
+   - Remove the pack from the config array, or branch inside a config factory
+   - Keeps the active scenario obvious in one file
 
 ```typescript
-// Single rule disable - still loads
 export const MyRule = rule({
-  enabled: false,  // Shows as "(off)" in logs
+  enabled: false,
   handler: ...
 });
 
-// Group disable - doesn't load
-// File: rules/.disabled/my-rule.ts
-export const MyRule = rule(...);  // File not imported!
+const rules = process.env["MOCK_PACK"] === "checkout" ? CheckoutRules : [];
 ```
 
 ✅ **Solution:**
 
 - Use `enabled: false` for temporary single rule toggle
-- Use dot-prefix folder for disabling entire feature sets
-- Check server startup logs to verify rule state
-- Use `scripts/toggle-rules.sh` for group management
+- Use config branches for feature sets
+- Check config and startup logs to verify active rule counts
 
 ---
 
@@ -651,7 +645,7 @@ curl -X POST http://localhost:4000/api/users \
 
 ### Strategy 2: Test Script
 
-**Create `scripts/test-rules.sh`:**
+**Create a local smoke test script:**
 
 ```bash
 #!/bin/bash
@@ -675,8 +669,8 @@ echo "All tests passed!"
 **Run:**
 
 ```bash
-chmod +x scripts/test-rules.sh
-./scripts/test-rules.sh
+chmod +x scripts/smoke.sh
+./scripts/smoke.sh
 ```
 
 ---
@@ -933,25 +927,24 @@ export const Cached = rule("GET", "/api/expensive", async (req, res) => {
 
 ## Team Collaboration
 
-### Pattern 1: Shared vs. Personal Rules
+### Pattern 1: Shared vs. Personal Config
 
 **Convention:**
 
 ```
+override-proxy.config.ts          # Team-wide config (committed)
+override-proxy.local.config.ts    # Personal config (gitignored)
 rules/
-├── shared/             # Team-wide rules (committed)
-│   ├── auth.ts
-│   └── products.ts
-└── .personal/          # Personal rules (gitignored)
-    ├── .alice/
-    └── .bob/
+└── shared/                       # Team-wide rule modules (committed)
+    ├── auth.ts
+    └── products.ts
 ```
 
 **Add to `.gitignore`:**
 
 ```gitignore
-rules/.personal/
-rules/.*/
+override-proxy.local.config.*
+override-proxy.config.local.*
 ```
 
 ---
@@ -996,9 +989,9 @@ export const UserDetail = rule({
 
 ---
 
-### Pattern 4: Changelog for Rules
+### Pattern 4: Changelog for Rule Packs
 
-**Create `rules/CHANGELOG.md`:**
+**Create `docs/rules-changelog.md` when rule packs are shared across teams:**
 
 ```markdown
 # Rules Changelog
@@ -1007,7 +1000,7 @@ export const UserDetail = rule({
 
 - Added `UserDetail` rule for `/api/users/:id`
 - Fixed `AuthToken` rule to handle expired tokens
-- Archived `old-commerce/` rules to `.trash/2025-q1/`
+- Removed `old-commerce` from the default config
 
 ## 2025-01-10
 
@@ -1025,13 +1018,14 @@ export const UserDetail = rule({
 - Rule files (`.ts`, `.js`)
 - Shared helpers (`_helpers/`)
 - Test data (`_data/`)
+- Shared `override-proxy.config.ts` when the overrides are team-wide
 - Documentation (`README.md`, `CHANGELOG.md`)
 - `.env.default` (non-sensitive defaults)
 
 ❌ **Don't commit:**
 
 - `.env.local` (secrets)
-- Personal rules (`.personal/`, `.wip/`)
+- Personal config (`override-proxy.local.config.*`, `override-proxy.config.local.*`)
 - Large binary files
 - Temporary test files
 
@@ -1043,10 +1037,9 @@ export const UserDetail = rule({
 # Environment
 .env.local
 
-# Personal rules
-rules/.personal/
-rules/.wip/
-rules/.*/
+# Personal override-proxy config
+override-proxy.local.config.*
+override-proxy.config.local.*
 
 # OS
 .DS_Store
@@ -1354,7 +1347,7 @@ export const UserDetail = rule({
 
 **Migration steps:**
 
-1. Copy MSW handlers one-by-one to `rules/`
+1. Convert MSW handlers one-by-one into rule modules
 2. Convert `rest.get/post/...` to `rule(method, path, handler)`
 3. Convert `req.params` to regex captures or `req.query`
 4. Replace `ctx.status()` with `res.status()`
@@ -1387,24 +1380,24 @@ export const UserDetail = rule({
 
 ### Checklist: Before Committing a New Rule
 
-- [ ] Rule name is descriptive and follows convention
-- [ ] File placed in correct folder
+- [ ] Rule export and optional `name` are descriptive
+- [ ] Rule is imported into the intended config branch
 - [ ] Export uses recommended pattern (`export const RuleName = ...`)
 - [ ] Test function returns boolean
 - [ ] Async handlers use `async/await` correctly
 - [ ] No hardcoded secrets
 - [ ] Error handling present (try-catch for async)
 - [ ] Tested manually with curl
-- [ ] Added entry to `rules/CHANGELOG.md` (if applicable)
+- [ ] Added entry to the rule pack changelog (if applicable)
 - [ ] No memory leaks (stateful rules have limits)
 
 ---
 
 ### Checklist: Rule Not Working?
 
-1. [ ] Is file in `rules/` (not dotfile/folder)?
-2. [ ] Is export valid (`export const/default`)?
-3. [ ] Is rule listed in startup logs?
+1. [ ] Is the rule imported by the active config file?
+2. [ ] Is it attached to the expected route and transport?
+3. [ ] Does startup log show the expected rule count?
 4. [ ] Does `test()` function return `true`?
 5. [ ] Does `methods` array include request method?
 6. [ ] Is path/regex correct (check with `req.path`)?

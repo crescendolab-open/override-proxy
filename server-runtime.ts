@@ -3,7 +3,6 @@ import getPort from "get-port";
 import type { Server as HttpServer } from "node:http";
 import type { NormalizedConfig, NormalizedServer } from "./config.js";
 import { createRoutedHttpApp, type HttpRouteRuntime } from "./http-app.js";
-import { loadRuleRegistryFromDirs } from "./rule-loader.js";
 import { sortRoutes } from "./route-matching.js";
 import type { OverrideRule } from "./utils.js";
 import { createWebSocketUpgradeHandler } from "./ws-direct-proxy.js";
@@ -15,7 +14,6 @@ export interface LegacyEnvSnapshot {
 }
 
 export interface StartConfiguredServersOptions {
-  ensureRulesDirs?: readonly string[];
   legacyEnv?: LegacyEnvSnapshot;
 }
 
@@ -40,10 +38,7 @@ export async function startConfiguredServers(
   const allOverrides: OverrideRule[] = [];
 
   for (const serverConfig of config.servers) {
-    const routes = await createRouteRuntimes(
-      serverConfig,
-      options.ensureRulesDirs ?? [],
-    );
+    const routes = createRouteRuntimes(serverConfig);
     for (const route of routes) allOverrides.push(...route.overrides);
 
     const { app } = createRoutedHttpApp({
@@ -72,36 +67,23 @@ export async function startConfiguredServers(
   };
 }
 
-async function createRouteRuntimes(
+function createRouteRuntimes(
   serverConfig: NormalizedServer,
-  ensureRulesDirs: readonly string[],
-): Promise<HttpRouteRuntime[]> {
+): HttpRouteRuntime[] {
   const routes: HttpRouteRuntime[] = [];
 
   for (const { route } of sortRoutes(serverConfig.routes)) {
-    const httpRegistry =
-      route.http === false
-        ? await loadRuleRegistryFromDirs({ rulesDirs: [] })
-        : await loadRuleRegistryFromDirs({
-            rulesDirs: route.http.rulesDirs,
-            ensureDirs: ensureRulesDirs,
-          });
-    const wsRegistry =
-      route.ws === false
-        ? await loadRuleRegistryFromDirs({ rulesDirs: [] })
-        : await loadRuleRegistryFromDirs({
-            rulesDirs: route.ws.rulesDirs,
-          });
+    const overrides = route.http === false ? [] : route.http.rules;
+    const wsRules = route.ws === false ? [] : route.ws.rules;
+    const wsConnectionRules =
+      route.ws === false ? [] : route.ws.connectionRules;
 
     routes.push({
       serverName: serverConfig.name,
       route,
-      overrides: httpRegistry.overrides,
-      metaMap: httpRegistry.metaMap,
-      wsRules: wsRegistry.wsRules,
-      wsMetaMap: wsRegistry.wsMetaMap,
-      wsConnectionRules: wsRegistry.wsConnectionRules,
-      wsConnectionMetaMap: wsRegistry.wsConnectionMetaMap,
+      overrides,
+      wsRules,
+      wsConnectionRules,
     });
   }
 

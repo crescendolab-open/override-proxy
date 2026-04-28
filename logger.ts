@@ -1,5 +1,4 @@
 import chalk from "chalk";
-import type { OverrideRuleMeta } from "./utils.js";
 
 export function fmtStatus(status?: number): string {
   if (status == null) return "";
@@ -10,23 +9,12 @@ export function fmtStatus(status?: number): string {
   return String(status);
 }
 
-export function logRequestStart(
-  id: number,
-  method: string,
-  url: string,
-): void {
+export function logRequestStart(id: number, method: string, url: string): void {
   console.log(chalk.gray(`[${id}] -> ${method} ${url}`));
 }
 
-export function logRequestMatch(
-  id: number,
-  match: string,
-  meta?: OverrideRuleMeta,
-): void {
-  const extra = meta?.file
-    ? ` (${meta.file}${meta?.export ? ":" + meta.export : ""})`
-    : "";
-  console.log(chalk.cyan(`[${id}] match ${match}${extra}`));
+export function logRequestMatch(id: number, match: string): void {
+  console.log(chalk.cyan(`[${id}] match ${match}`));
 }
 
 export function logRequestEnd(
@@ -58,10 +46,7 @@ export function logWebSocketUpgrade(
   console.log(chalk.gray(`[ws:${id}] -> ${pathname}${route}`));
 }
 
-export function logWebSocketProxy(
-  id: number,
-  target: string,
-): void {
+export function logWebSocketProxy(id: number, target: string): void {
   console.log(`[ws:${id}] proxy ${chalk.blue(target)}`);
 }
 
@@ -69,12 +54,8 @@ export function logWebSocketMatch(
   id: number,
   direction: string,
   match: string,
-  meta?: OverrideRuleMeta,
 ): void {
-  const extra = meta?.file
-    ? ` (${meta.file}${meta?.export ? ":" + meta.export : ""})`
-    : "";
-  console.log(chalk.cyan(`[ws:${id}] ${direction} match ${match}${extra}`));
+  console.log(chalk.cyan(`[ws:${id}] ${direction} match ${match}`));
 }
 
 export function logWebSocketAction(
@@ -87,11 +68,7 @@ export function logWebSocketAction(
   console.log(`[ws:${id}] ${direction} ${action}${size}`);
 }
 
-export function logWebSocketClose(
-  id: number,
-  code: number,
-  ms: number,
-): void {
+export function logWebSocketClose(id: number, code: number, ms: number): void {
   console.log(chalk.gray(`[ws:${id}] <- close ${code} ${ms}ms`));
 }
 

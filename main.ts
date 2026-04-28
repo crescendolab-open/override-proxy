@@ -1,15 +1,16 @@
 import { normalizeLegacyConfig, resolveRuntimeConfig } from "./config.js";
 import { startConfiguredServers } from "./server-runtime.js";
 
-const { TARGET, PORT, CORS_ORIGINS, rulesDir, externalRulesDir } =
-  resolveRuntimeConfig(process.argv, import.meta.url);
+const { TARGET, PORT, CORS_ORIGINS } = resolveRuntimeConfig(
+  process.argv,
+  import.meta.url,
+);
 
 const normalizedConfig = normalizeLegacyConfig(
-  { TARGET, PORT, CORS_ORIGINS, rulesDir, externalRulesDir },
+  { TARGET, PORT, CORS_ORIGINS },
   { cwd: process.cwd() },
 );
 const runtime = await startConfiguredServers(normalizedConfig, {
-  ensureRulesDirs: [rulesDir],
   legacyEnv: {
     target: TARGET,
     port: PORT,

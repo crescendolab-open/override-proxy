@@ -23,7 +23,7 @@ Goal: split the current single-file runtime into focused modules while preservin
 - [x] Extract Express app creation and HTTP override dispatch.
 - [x] Extract proxy fallback creation.
 - [x] Keep public exports compatible: `app`, `overrides`, `TARGET`.
-- [x] Keep `pnpm dev`, `--rules-dir`, `/__env`, demo rule, and proxy fallback behavior unchanged.
+- [x] Keep `pnpm dev`, `/__env`, demo rule, and proxy fallback behavior unchanged.
 - [x] Verify with `npx tsc --noEmit`.
 - [x] Verify legacy smoke test against `/__env` and `/__demo/hello`.
 
@@ -35,8 +35,7 @@ Goal: introduce config files and normalized config while still supporting legacy
 - [x] Add config discovery for `override-proxy.config.ts|mts|js|mjs`.
 - [x] Add `--config <path>` parsing.
 - [x] Add normalized config types.
-- [x] Map legacy env and flags into normalized config when no config exists.
-- [x] Resolve relative paths from the config file directory.
+- [x] Map legacy env into normalized config when no config exists.
 - [x] Validate server names, route names, route paths, control prefix, and duplicate topology.
 - [x] Add focused tests for discovery, legacy mapping, normalization, and validation.
 - [x] Verify with `npx tsc --noEmit`.
@@ -65,8 +64,7 @@ Goal: make the project usable as a standalone CLI while preserving the current w
 - [x] Add `validate` to load and validate config without listening.
 - [x] Add stable exit codes for usage, validation, loader, runtime, and port failures.
 - [x] Update `pnpm dev` to run the CLI path in watch mode.
-- [x] Preserve `pnpm dev -- --rules-dir=...`.
-- [x] Add CLI tests for default config, explicit config, legacy flags, and invalid multi-server overrides.
+- [x] Add CLI tests for default config, explicit config, config factories, legacy env fallback, and validation errors.
 - [x] Verify with `npx tsc --noEmit`.
 
 ## Phase 5: WebSocket Direct Proxy
@@ -149,6 +147,17 @@ Goal: let WebSocket rules send messages and manage timers without waiting for in
 - [x] Add `ctx.every()` and disposer cleanup on socket close.
 - [x] Queue connection-rule upstream sends while upstream is still connecting.
 - [x] Add integration tests for welcome messages, heartbeat intervals, disposer cleanup, and upstream sends.
+
+## Phase 12: Inline Config Rules
+
+Goal: remove runtime file-based rule discovery and make config composition explicit.
+
+- [x] Replace `rulesDir` / `rulesDirs` with inline `http.rules`, `ws.rules`, and `ws.connectionRules`.
+- [x] Support config object exports, config factory exports, and async config factory exports.
+- [x] Remove `--rules-dir` and legacy file rule loading.
+- [x] Remove `rule-loader.ts` and `fast-glob`.
+- [x] Remove obsolete rule directory scripts and file/export metadata plumbing.
+- [x] Update tests and docs to import or define rules in config.
 
 ## Next-Step Rule
 

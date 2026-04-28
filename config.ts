@@ -1,8 +1,11 @@
 import dotenvx from "@dotenvx/dotenvx";
 import fsExtra from "fs-extra";
-import url from "node:url";
-import { dirname, join, resolve } from "pathe";
-import { parseRulesDir } from "./utils.js";
+import { resolve } from "pathe";
+import type {
+  OverrideRule,
+  WebSocketConnectionRule,
+  WebSocketRule,
+} from "./utils.js";
 
 export const DEFAULT_CONFIG_FILES = [
   "override-proxy.local.config.ts",
@@ -21,6 +24,20 @@ export const DEFAULT_CONFIG_FILES = [
 
 export type NonEmptyArray<T> = readonly [T, ...T[]];
 export type RoutePath = `/${string}`;
+
+export type OverrideProxyConfigExport =
+  | OverrideProxyConfig
+  | OverrideProxyConfigFactory;
+
+export type OverrideProxyConfigFactory = (
+  ctx: OverrideProxyConfigContext,
+) => OverrideProxyConfig | Promise<OverrideProxyConfig>;
+
+export interface OverrideProxyConfigContext {
+  cwd: string;
+  configFile: string | null;
+  env: Record<string, string | undefined>;
+}
 
 export interface OverrideProxyConfig {
   servers: NonEmptyArray<ServerConfig>;
@@ -48,8 +65,7 @@ export interface RouteConfig {
   path: RoutePath;
   priority?: number;
   target?: string | null;
-  rulesDir?: string;
-  rulesDirs?: readonly string[];
+  rules?: readonly OverrideRule[];
   rewrite?: RouteRewrite | null;
   http?: HttpTransportConfig | false;
   ws?: WsTransportConfig | false;
@@ -68,16 +84,15 @@ export interface RouteRewriteContext {
 
 export interface HttpTransportConfig {
   enabled?: boolean;
-  rulesDir?: string;
-  rulesDirs?: readonly string[];
+  rules?: readonly OverrideRule[];
 }
 
 export interface WsTransportConfig {
   enabled?: boolean;
   mode?: "direct" | "bridge" | "mock";
   target?: string | null;
-  rulesDir?: string;
-  rulesDirs?: readonly string[];
+  rules?: readonly WebSocketRule[];
+  connectionRules?: readonly WebSocketConnectionRule[];
 }
 
 export interface NormalizedConfig {
@@ -108,7 +123,7 @@ export interface NormalizedRoute {
   path: RoutePath;
   priority: number;
   target: string | null;
-  rulesDirs: string[];
+  rules: OverrideRule[];
   rewrite: RouteRewrite | null;
   http: NormalizedHttpTransport | false;
   ws: NormalizedWsTransport | false;
@@ -116,22 +131,21 @@ export interface NormalizedRoute {
 
 export interface NormalizedHttpTransport {
   enabled: true;
-  rulesDirs: string[];
+  rules: OverrideRule[];
 }
 
 export interface NormalizedWsTransport {
   enabled: true;
   mode: "direct" | "bridge" | "mock";
   target: string | null;
-  rulesDirs: string[];
+  rules: WebSocketRule[];
+  connectionRules: WebSocketConnectionRule[];
 }
 
 export interface RuntimeConfig {
   TARGET: string;
   PORT: number;
   CORS_ORIGINS: string | undefined;
-  rulesDir: string;
-  externalRulesDir: string | null;
 }
 
 export interface NormalizeLegacyConfigOptions {
@@ -163,12 +177,7 @@ export class ConfigValidationError extends Error {
   }
 }
 
-interface RulesDirConfig {
-  rulesDir?: string;
-  rulesDirs?: readonly string[];
-}
-
-export function defineConfig<const T extends OverrideProxyConfig>(
+export function defineConfig<const T extends OverrideProxyConfigExport>(
   config: T,
 ): T {
   return config;
@@ -205,9 +214,6 @@ export function normalizeLegacyConfig(
   config: RuntimeConfig,
   options: NormalizeLegacyConfigOptions = {},
 ): NormalizedConfig {
-  const rulesDirs = [config.externalRulesDir, config.rulesDir].filter(
-    (dir): dir is string => Boolean(dir),
-  );
   const corsOrigins = config.CORS_ORIGINS
     ? config.CORS_ORIGINS.split(",")
         .map((origin) => origin.trim())
@@ -234,11 +240,11 @@ export function normalizeLegacyConfig(
             path: "/",
             priority: 0,
             target: config.TARGET,
-            rulesDirs,
+            rules: [],
             rewrite: null,
             http: {
               enabled: true,
-              rulesDirs,
+              rules: [],
             },
             ws: false,
           },
@@ -254,13 +260,12 @@ export function normalizeConfig(
 ): NormalizedConfig {
   const cwd = options.cwd ?? process.cwd();
   const configFile = options.configFile ?? null;
-  const baseDir = configFile ? dirname(configFile) : cwd;
 
   return {
     cwd,
     configFile,
     servers: config.servers.map((server, serverIndex) =>
-      normalizeServerConfig(server, serverIndex, baseDir),
+      normalizeServerConfig(server, serverIndex),
     ),
   };
 }
@@ -306,7 +311,6 @@ export function assertValidNormalizedConfig(config: NormalizedConfig): void {
 function normalizeServerConfig(
   server: ServerConfig,
   serverIndex: number,
-  baseDir: string,
 ): NormalizedServer {
   return {
     name:
@@ -321,7 +325,7 @@ function normalizeServerConfig(
             path: server.control?.path ?? "/__override",
           },
     routes: server.routes.map((route, routeIndex) =>
-      normalizeRouteConfig(route, routeIndex, baseDir),
+      normalizeRouteConfig(route, routeIndex),
     ),
   };
 }
@@ -340,36 +344,32 @@ function normalizeCorsConfig(
 function normalizeRouteConfig(
   route: RouteConfig,
   routeIndex: number,
-  baseDir: string,
 ): NormalizedRoute {
-  const routeRulesDirs = resolveRulesDirs(route, baseDir);
-  const httpRulesDirs = route.http
-    ? [...routeRulesDirs, ...resolveRulesDirs(route.http, baseDir)]
-    : routeRulesDirs;
+  const routeRules = [...(route.rules ?? [])];
+  const httpRules =
+    route.http === false
+      ? []
+      : [...routeRules, ...((route.http && route.http.rules) || [])];
 
   return {
     name: route.name ?? defaultRouteName(route.path, routeIndex),
     path: route.path,
     priority: route.priority ?? 0,
     target: route.target ?? null,
-    rulesDirs: routeRulesDirs,
+    rules: routeRules,
     rewrite: route.rewrite ?? null,
     http:
       route.http === false
         ? false
         : {
             enabled: true,
-            rulesDirs: httpRulesDirs,
+            rules: httpRules,
           },
-    ws: normalizeWsConfig(route, routeRulesDirs, baseDir),
+    ws: normalizeWsConfig(route),
   };
 }
 
-function normalizeWsConfig(
-  route: RouteConfig,
-  routeRulesDirs: string[],
-  baseDir: string,
-): NormalizedWsTransport | false {
+function normalizeWsConfig(route: RouteConfig): NormalizedWsTransport | false {
   const ws = route.ws;
   if (!ws || ws.enabled === false) return false;
 
@@ -377,15 +377,9 @@ function normalizeWsConfig(
     enabled: true,
     mode: ws.mode ?? "direct",
     target: ws.target ?? route.target ?? null,
-    rulesDirs: [...routeRulesDirs, ...resolveRulesDirs(ws, baseDir)],
+    rules: [...(ws.rules ?? [])],
+    connectionRules: [...(ws.connectionRules ?? [])],
   };
-}
-
-function resolveRulesDirs(config: RulesDirConfig, baseDir: string): string[] {
-  const dirs: string[] = [];
-  if (config.rulesDir) dirs.push(resolve(baseDir, config.rulesDir));
-  for (const dir of config.rulesDirs ?? []) dirs.push(resolve(baseDir, dir));
-  return dirs;
 }
 
 function defaultRouteName(path: RoutePath, routeIndex: number): string {
@@ -468,18 +462,14 @@ export function loadEnvironment(): void {
 }
 
 export function resolveRuntimeConfig(
-  argv: string[] = process.argv,
-  moduleUrl: string = import.meta.url,
+  _argv: string[] = process.argv,
+  _moduleUrl: string = import.meta.url,
 ): RuntimeConfig {
   loadEnvironment();
-
-  const moduleDir = dirname(url.fileURLToPath(moduleUrl));
 
   return {
     TARGET: process.env["PROXY_TARGET"] || "https://pokeapi.co/api/v2/",
     PORT: Number(process.env["PORT"] || 4000),
     CORS_ORIGINS: process.env["CORS_ORIGINS"],
-    rulesDir: join(moduleDir, "rules"),
-    externalRulesDir: parseRulesDir(argv),
   };
 }

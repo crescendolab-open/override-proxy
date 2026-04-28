@@ -38,9 +38,7 @@ try {
     );
     assert.equal(message, "echo:hello");
 
-    await expectWebSocketRejected(
-      `ws://127.0.0.1:${server.actualPort}/no-ws`,
-    );
+    await expectWebSocketRejected(`ws://127.0.0.1:${server.actualPort}/no-ws`);
   } finally {
     await Promise.all(runtime.servers.map((server) => close(server.listener)));
   }
@@ -58,7 +56,7 @@ function route(
     path,
     priority: 0,
     target: null,
-    rulesDirs: [],
+    rules: [],
     rewrite: null,
     http: false,
     ws: wsTarget
@@ -66,7 +64,8 @@ function route(
           enabled: true,
           mode: "direct",
           target: wsTarget,
-          rulesDirs: [],
+          rules: [],
+          connectionRules: [],
         }
       : false,
   };
@@ -157,13 +156,13 @@ function encodeServerTextFrame(message: string): Buffer {
   const payload = Buffer.from(message);
   assert.ok(payload.length < 126);
 
-  return Buffer.concat([
-    Buffer.from([0x81, payload.length]),
-    payload,
-  ]);
+  return Buffer.concat([Buffer.from([0x81, payload.length]), payload]);
 }
 
-async function websocketRoundTrip(url: string, message: string): Promise<string> {
+async function websocketRoundTrip(
+  url: string,
+  message: string,
+): Promise<string> {
   const ws = new WebSocket(url);
   await new Promise<void>((resolve, reject) => {
     ws.addEventListener("open", () => resolve(), { once: true });
@@ -173,11 +172,9 @@ async function websocketRoundTrip(url: string, message: string): Promise<string>
   });
 
   const reply = new Promise<string>((resolve, reject) => {
-    ws.addEventListener(
-      "message",
-      (event) => resolve(String(event.data)),
-      { once: true },
-    );
+    ws.addEventListener("message", (event) => resolve(String(event.data)), {
+      once: true,
+    });
     ws.addEventListener("error", () => reject(new Error("WebSocket failed")), {
       once: true,
     });

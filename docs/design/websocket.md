@@ -17,6 +17,8 @@ It does not imply Socket.IO support. Socket.IO uses its own protocol on top of W
 ## Route Config
 
 ```ts
+import { PatchChatMessage } from "./rules/ws/chat.js";
+
 export default defineConfig({
   servers: [
     {
@@ -28,8 +30,8 @@ export default defineConfig({
           path: "/ws/chat",
           ws: {
             target: "wss://chat.example.com/ws/chat",
-            rulesDir: "./rules/ws",
             mode: "bridge",
+            rules: [PatchChatMessage],
           },
         },
       ],
@@ -40,12 +42,12 @@ export default defineConfig({
 
 Recommended defaults:
 
-| Field         | Default                                       |
-| ------------- | --------------------------------------------- |
-| `ws`          | `false`                                       |
-| `ws.mode`     | `direct`                                      |
-| `ws.target`   | Inherited from route `target` when compatible |
-| `ws.rulesDir` | Route `rulesDir`                              |
+| Field       | Default                                       |
+| ----------- | --------------------------------------------- |
+| `ws`        | `false`                                       |
+| `ws.mode`   | `direct`                                      |
+| `ws.target` | Inherited from route `target` when compatible |
+| `ws.rules`  | `[]`                                          |
 
 ## Rule Shape
 
@@ -199,8 +201,8 @@ Mock-only WebSocket routes omit `target`:
 
 ```ts
 ws: {
-  mode: 'bridge',
-  rulesDir: './rules/ws',
+  mode: 'mock',
+  rules: [MockChat],
 }
 ```
 

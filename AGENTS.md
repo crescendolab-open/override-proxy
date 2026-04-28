@@ -21,23 +21,10 @@ When you need:
 
 ## Available Tools
 
-Use these to work faster:
-
-**Claude Code Commands** (custom slash commands):
-
-- `/rule` - Create rules with AI assistance and templates
-- `/rule-toggle` - Enable/disable rule groups
-- `/rule-diagnose` - Systematic debugging with fix recommendations
-- `/rule-test` - Generate and run tests automatically
-- `/migrate-from-msw` - Convert MSW handlers to override-proxy
-
-**Bash Scripts** (in `scripts/` directory):
-
-- `./scripts/toggle-rules.sh` - Quick CLI toggling
-- `./scripts/test-rules.sh` - Automated test runner
-- `./scripts/list-rules.sh` - Inspect rules
-
-Full documentation: [docs/TOOLS.md](docs/TOOLS.md)
+Use [docs/TOOLS.md](docs/TOOLS.md) for current development commands.
+The active workflow is config-driven: validate the config, run focused tests,
+and import rule values explicitly from config. Do not reintroduce directory
+scanning, folder renames, or rule registry scripts.
 
 ---
 
@@ -113,17 +100,27 @@ Config mode:
   `override-proxy.config.ts|mts|js|mjs`.
 - `--config <path>` overrides discovery.
 - Config supports multiple servers, route-scoped HTTP rules, route-specific targets, rewrites, and WebSocket transports.
-- If no config exists, legacy mode preserves `PROXY_TARGET`, `PORT`, `CORS_ORIGINS`, built-in `rules/`, and optional `--rules-dir`.
+- If no config exists, legacy mode preserves `PROXY_TARGET`, `PORT`, and `CORS_ORIGINS`.
 
 ---
 
 ## 4. Rule System Quick Reference
 
-Rules are loaded from `rules/**/*.ts|mts|js|mjs` (excluding `.d.ts`, `.d.mts`, and dotfiles). All exports are inspected:
+Rules are inline config values. Users may define them directly in config or import them from any module:
 
-- Named exports whose value is an `OverrideRule` (or an array of them) are included.
-- Legacy patterns: default export (single or array) and a `rules` named array are still supported.
-- Export identifier overrides any internal `name` passed to `rule()` (the `name` option is deprecated—omit it).
+```ts
+import { GetUser } from "./rules/get-user.js";
+
+export default defineConfig({
+  servers: [
+    {
+      routes: [{ path: "/api", http: { rules: [GetUser] } }],
+    },
+  ],
+});
+```
+
+Config exports may be objects, functions, or async functions. If rule setup needs filesystem access or dynamic imports, put that logic in the config factory.
 
 ```ts
 interface OverrideRule {
@@ -154,7 +151,7 @@ Rules:
 - Provide path or test (one required)
 - methods default to ["GET"] in config form; required explicitly in overload form
 - First matching enabled rule short-circuits
-- Export name becomes log/display name; omit `name` option
+- Use a concise `name` when startup or match logs need a stable display name
 
 Edge cases:
 
@@ -162,7 +159,7 @@ Edge cases:
 
 ### 4.1 WebSocket Rules
 
-WebSocket rules are loaded from the route's `ws.rulesDir` / `ws.rulesDirs` plus route-level rule directories. Use `wsRule()` for raw WebSocket messages:
+Attach WebSocket rules through `route.ws.rules`. Use `wsRule()` for raw WebSocket messages:
 
 ```ts
 import { wsRule } from "../utils.js";
@@ -191,26 +188,11 @@ export const Heartbeat = wsConnectionRule({
 
 Connection rules receive typed `client` and optional `upstream` peers plus `ctx.raw` for advanced access to the underlying `ws` sockets. Prefer `ctx.every()` over manual timers so cleanup stays automatic on close.
 
-### 4.2 Rule Organization & Archival Strategy
+### 4.2 Rule Organization
 
-The loader (`fast-glob` with `dot: false`) ignores dot-prefixed files/folders. Use this to manage groups:
+Use normal module boundaries to organize rules. Import only the rule packs needed by the current config. Disable a rule with `enabled: false`; choose a different config or conditional factory branch to disable whole packs.
 
-| Use case                | Action / Convention                                     |
-| ----------------------- | ------------------------------------------------------- |
-| Group related rules     | Place them in a subfolder (`rules/commerce/`, etc.)     |
-| Disable single rule     | Add `enabled: false` to rule config (rule still loads)  |
-| Temporarily disable set | Rename folder to start with `.` (`rules/.demo-pack/`)   |
-| Archive old packs       | Move into `rules/.trash/<name>/` (dot keeps it ignored) |
-| Restore pack            | Move back / remove leading dot                          |
-| Personal scratch        | `rules/.wip/` (also add to `.gitignore` if desired)     |
-
-**Toggle methods:**
-
-- **Single rule**: Set `enabled: false` in rule config (file still imports, rule shows as "(off)" in logs)
-- **Rule group**: Rename folder with dot prefix (files not imported at all)
-- **CLI tool**: Use `scripts/toggle-rules.sh` for quick group toggling
-
-No runtime registry is needed—folder naming alone controls inclusion. This keeps the import loop trivial and diff-friendly.
+No runtime registry is needed. Config imports are the source of truth, which keeps TypeScript errors close to the code that selected each rule.
 
 Guidelines:
 
@@ -268,15 +250,14 @@ Avoid changing this behavior unless you add configurability; keep deterministic 
 
 ## 9. Adding a New Rule (Recipe)
 
-1. Create a file under `rules/` (e.g. `rules/user-detail.ts`).
-2. Import `rule` helper with correct path:
-   - From `rules/*.ts`: `import { rule } from "../utils.js";`
-   - From `rules/subdir/*.ts`: `import { rule } from "../../utils.js";`
-3. Implement using `rule()` helper with named export (export name becomes rule name).
+1. Create or update a module for the rule (for example `rules/user-detail.ts`, or any project-local path).
+2. Import `rule` from the package API (`override-proxy`) or from the local source helper when working inside this checkout.
+3. Implement using `rule()` helper with a concise `name` when logs need a stable display value.
 4. Use `path: '/api/foo'` or `path: /^\/api\/foo\//` or custom `test`.
 5. Return response via `res.json(...)`. Avoid blocking long operations; simulate delay with `await new Promise(r=>setTimeout(r, ms))`.
-6. Save: nodemon reloads automatically. Confirm the route rule count in startup logs.
-7. Send request; verify log shows `match <ruleName>` and `via override`.
+6. Import the rule into `override-proxy.config.ts` and attach it to `route.rules` or `route.http.rules`.
+7. Save: nodemon reloads automatically for root source/config changes.
+8. Send request; verify log shows `match <ruleName>` and `via override`.
 
 Example:
 
@@ -288,7 +269,7 @@ export const myRule = rule("GET", "/api/foo", (req, res) => {
 });
 ```
 
-Disable temporarily by setting `enabled: false` (it will still list with `(off)`).
+Disable temporarily by setting `enabled: false` or removing the rule from the active config branch.
 
 ---
 
@@ -351,13 +332,13 @@ If implementing, update this file & README accordingly.
 
 ## 14. Troubleshooting
 
-| Symptom           | Check                                                                                  |
-| ----------------- | -------------------------------------------------------------------------------------- |
-| Rule not listed   | Filename under `rules/`? Export pattern valid? No thrown import error (check console). |
-| Rule not matching | Path vs `req.path` (exclude query)? Regex escaping correct? Method allowed?            |
-| CORS blocked      | Origin string exact (no trailing slash) & present in `CORS_ORIGINS`?                   |
-| Port mismatch     | Preferred port busy → see log; adjust `PORT` or free the port.                         |
-| Proxy errors      | Upstream reachable? `PROXY_TARGET` trailing slash ok (middleware handles)              |
+| Symptom           | Check                                                                                   |
+| ----------------- | --------------------------------------------------------------------------------------- |
+| Rule not active   | Imported into config? Attached to the expected route/transport? No thrown import error? |
+| Rule not matching | Path vs `req.path` (exclude query)? Regex escaping correct? Method allowed?             |
+| CORS blocked      | Origin string exact (no trailing slash) & present in `CORS_ORIGINS`?                    |
+| Port mismatch     | Preferred port busy → see log; adjust `PORT` or free the port.                          |
+| Proxy errors      | Upstream reachable? `PROXY_TARGET` trailing slash ok (middleware handles)               |
 
 ---
 

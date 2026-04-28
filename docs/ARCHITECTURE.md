@@ -13,12 +13,11 @@ flowchart TB
   Utils["utils.ts rule helpers"]
   Runtime["server-runtime.ts"]
   HttpApp["http-app.ts"]
-  Loader["rule-loader.ts"]
   DirectWs["ws-direct-proxy.ts"]
   BridgeWs["ws-bridge.ts"]
   Routes["route-matching.ts"]
   Proxy["proxy-fallback.ts"]
-  Rules["rules/**/*.ts|mts|js|mjs"]
+  Rules["Inline imported rules"]
   Upstream["Upstream HTTP or WS"]
   Client["Client"]
 
@@ -27,8 +26,8 @@ flowchart TB
   CLI --> Config
   Main --> Config
   Config --> Runtime
-  Runtime --> Loader
-  Loader --> Rules
+  Config --> Rules
+  Runtime --> Rules
   Runtime --> HttpApp
   Runtime --> DirectWs
   HttpApp --> Routes
@@ -71,7 +70,7 @@ sequenceDiagram
   end
 ```
 
-HTTP rules are route-scoped. A route can have its own target, rules directories, and rewrite behavior.
+HTTP rules are route-scoped. A route can have its own target, inline imported rules, and rewrite behavior.
 
 ## WebSocket Flow
 
@@ -130,9 +129,8 @@ Code: [route-matching.ts](../route-matching.ts)
 | [index.ts](../index.ts)                     | Side-effect-free package API exports for config and rule helpers             |
 | [cli.ts](../cli.ts)                         | CLI command parsing, config discovery, `serve`, `validate`, exit codes       |
 | [config.ts](../config.ts)                   | Public config types, legacy env mapping, normalization, validation           |
-| [server-runtime.ts](../server-runtime.ts)   | Starts configured servers, loads route rules, attaches WS upgrade handlers   |
+| [server-runtime.ts](../server-runtime.ts)   | Starts configured servers and attaches WS upgrade handlers                   |
 | [http-app.ts](../http-app.ts)               | Express app factory, CORS, control endpoint, route-scoped HTTP dispatch      |
-| [rule-loader.ts](../rule-loader.ts)         | Loads HTTP and WebSocket rules from directories                              |
 | [ws-direct-proxy.ts](../ws-direct-proxy.ts) | Routes upgrade requests and handles direct WS proxy mode                     |
 | [ws-bridge.ts](../ws-bridge.ts)             | Bridge/mock WebSocket runtime, connection hooks, and message action pipeline |
 | [proxy-fallback.ts](../proxy-fallback.ts)   | Route-specific HTTP proxy fallback                                           |
@@ -176,7 +174,7 @@ interface WebSocketConnectionRule {
 }
 ```
 
-The loader accepts named exports, default exports, `rules`, `wsRules`, and `wsConnectionRules` arrays. Named exports become log/display names when the rule has no explicit name.
+Config attaches these rule objects inline. Use imports, factory functions, or async config setup to compose rule packs.
 
 ## Testing
 

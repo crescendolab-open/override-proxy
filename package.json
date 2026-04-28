@@ -43,7 +43,6 @@
     "cors": "^2.8.5",
     "es-toolkit": "^1.39.10",
     "express": "^4.21.2",
-    "fast-glob": "^3.3.2",
     "fs-extra": "^11.2.0",
     "get-port": "^7.1.0",
     "http-proxy-middleware": "^3.0.5",

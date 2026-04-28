@@ -10,6 +10,11 @@ import {
   parseConfigPath,
   validateNormalizedConfig,
 } from "../config.js";
+import type {
+  OverrideRule,
+  WebSocketConnectionRule,
+  WebSocketRule,
+} from "../utils.js";
 
 const tempDir = await mkdtemp(join(tmpdir(), "override-proxy-config-"));
 
@@ -72,8 +77,6 @@ const legacy = normalizeLegacyConfig(
     TARGET: "http://upstream.example",
     PORT: 4321,
     CORS_ORIGINS: "http://localhost:3000, https://app.example",
-    rulesDir: "/repo/rules",
-    externalRulesDir: "/external/rules",
   },
   { cwd: "/repo" },
 );
@@ -85,8 +88,31 @@ assert.equal(legacyServer.preferredPort, 4321);
 assert.deepEqual(legacyServer.cors, {
   origins: ["http://localhost:3000", "https://app.example"],
 });
-assert.deepEqual(legacyRoute.rulesDirs, ["/external/rules", "/repo/rules"]);
+assert.deepEqual(legacyRoute.rules, []);
 assert.equal(legacyRoute.target, "http://upstream.example");
+
+const routeRule: OverrideRule = {
+  methods: ["GET"],
+  test: () => true,
+  handler: (_req, res) => {
+    res.end();
+  },
+};
+const httpRule: OverrideRule = {
+  methods: ["POST"],
+  test: () => true,
+  handler: (_req, res) => {
+    res.end();
+  },
+};
+const wsMessageRule: WebSocketRule = {
+  test: () => true,
+  handler: (ctx) => ctx.forward(),
+};
+const wsConnectRule: WebSocketConnectionRule = {
+  test: () => true,
+  onConnect: () => undefined,
+};
 
 const config = defineConfig({
   servers: [
@@ -95,13 +121,14 @@ const config = defineConfig({
         {
           path: "/api",
           target: "https://api.example.com",
-          rulesDir: "./rules",
+          rules: [routeRule],
           http: {
-            rulesDirs: ["./http-rules"],
+            rules: [httpRule],
           },
           ws: {
             enabled: true,
-            rulesDir: "./ws-rules",
+            rules: [wsMessageRule],
+            connectionRules: [wsConnectRule],
           },
         },
       ],
@@ -117,17 +144,12 @@ const route = server.routes[0]!;
 
 assert.equal(server.name, "main");
 assert.equal(route.name, "api");
-assert.deepEqual(route.rulesDirs, ["/workspace/config/rules"]);
+assert.deepEqual(route.rules, [routeRule]);
 if (route.http === false) throw new Error("Expected HTTP transport");
-assert.deepEqual(route.http.rulesDirs, [
-  "/workspace/config/rules",
-  "/workspace/config/http-rules",
-]);
+assert.deepEqual(route.http.rules, [routeRule, httpRule]);
 if (route.ws === false) throw new Error("Expected WebSocket transport");
-assert.deepEqual(route.ws.rulesDirs, [
-  "/workspace/config/rules",
-  "/workspace/config/ws-rules",
-]);
+assert.deepEqual(route.ws.rules, [wsMessageRule]);
+assert.deepEqual(route.ws.connectionRules, [wsConnectRule]);
 
 const invalid = normalizeConfig(
   defineConfig({
@@ -147,7 +169,7 @@ const invalid = normalizeConfig(
     ],
   }),
 );
-invalid.servers[1]!.routes[0]!.path = "api" as "/api";
+Object.assign(invalid.servers[1]!.routes[0]!, { path: "api" });
 
 const issues = validateNormalizedConfig(invalid);
 assert.ok(

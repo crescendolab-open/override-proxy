@@ -11,9 +11,10 @@ import {
   resolveRuntimeConfig,
   type NormalizedConfig,
   type OverrideProxyConfig,
+  type OverrideProxyConfigContext,
+  type OverrideProxyConfigExport,
 } from "./config.js";
 import { startConfiguredServers } from "./server-runtime.js";
-import { parseRulesDir } from "./utils.js";
 
 export const EXIT_CODES = {
   ok: 0,
@@ -38,14 +39,11 @@ export interface LoadCliConfigOptions {
 
 export interface LoadedCliConfig {
   normalizedConfig: NormalizedConfig;
-  legacy:
-    | {
-        target: string;
-        port: number;
-        corsOrigins?: string | undefined;
-        rulesDir: string;
-      }
-    | null;
+  legacy: {
+    target: string;
+    port: number;
+    corsOrigins?: string | undefined;
+  } | null;
 }
 
 export function resolveCliInvocation(argv: string[]): CliInvocation {
@@ -81,7 +79,6 @@ export async function runCli(
     await startConfiguredServers(loaded.normalizedConfig, {
       ...(loaded.legacy
         ? {
-            ensureRulesDirs: [loaded.legacy.rulesDir],
             legacyEnv: {
               target: loaded.legacy.target,
               port: loaded.legacy.port,
@@ -102,7 +99,10 @@ export async function loadCliConfig(
   options: LoadCliConfigOptions = {},
 ): Promise<LoadedCliConfig> {
   const cwd = options.cwd ?? process.cwd();
-  const runtimeConfig = resolveRuntimeConfig(argv, options.moduleUrl ?? import.meta.url);
+  const runtimeConfig = resolveRuntimeConfig(
+    argv,
+    options.moduleUrl ?? import.meta.url,
+  );
   const explicitConfig = parseConfigPath(argv, cwd);
   const configFile = explicitConfig ?? (await discoverConfigFile(cwd));
 
@@ -118,7 +118,6 @@ export async function loadCliConfig(
         target: runtimeConfig.TARGET,
         port: runtimeConfig.PORT,
         corsOrigins: runtimeConfig.CORS_ORIGINS,
-        rulesDir: runtimeConfig.rulesDir,
       },
     };
   }
@@ -127,10 +126,11 @@ export async function loadCliConfig(
     throw new ConfigLoaderError(`Config file not found: ${configFile}`);
   }
 
-  const userConfig = await loadUserConfig(configFile);
-  if (parseRulesDir(argv) && userConfig.servers.length > 1) {
-    throw new Error("--rules-dir cannot target a multi-server config");
-  }
+  const userConfig = await loadUserConfig(configFile, {
+    cwd,
+    configFile,
+    env: process.env,
+  });
 
   const normalizedConfig = normalizeConfig(userConfig, {
     cwd,
@@ -151,15 +151,31 @@ class ConfigLoaderError extends Error {
   }
 }
 
-async function loadUserConfig(configFile: string): Promise<OverrideProxyConfig> {
+async function loadUserConfig(
+  configFile: string,
+  context: OverrideProxyConfigContext,
+): Promise<OverrideProxyConfig> {
   const mod = toModuleRecord(await import(pathToFileURL(configFile).href));
   const config = mod["default"] ?? mod["config"];
-  if (!isOverrideProxyConfig(config)) {
+  if (!isOverrideProxyConfigExport(config)) {
     throw new ConfigLoaderError(
-      `Config file must export an override-proxy config object: ${configFile}`,
+      `Config file must export an override-proxy config object or factory: ${configFile}`,
     );
   }
-  return config;
+  const resolvedConfig =
+    typeof config === "function" ? await config(context) : config;
+  if (!isOverrideProxyConfig(resolvedConfig)) {
+    throw new ConfigLoaderError(
+      `Config factory must return an override-proxy config object: ${configFile}`,
+    );
+  }
+  return resolvedConfig;
+}
+
+function isOverrideProxyConfigExport(
+  value: unknown,
+): value is OverrideProxyConfigExport {
+  return isOverrideProxyConfig(value) || typeof value === "function";
 }
 
 function isOverrideProxyConfig(value: unknown): value is OverrideProxyConfig {
@@ -181,12 +197,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function classifyError(error: unknown): number {
   if (error instanceof ConfigLoaderError) return EXIT_CODES.loader;
   if (error instanceof Error && error.name === "ConfigValidationError") {
-    return EXIT_CODES.validation;
-  }
-  if (
-    error instanceof Error &&
-    error.message.includes("--rules-dir cannot target a multi-server config")
-  ) {
     return EXIT_CODES.validation;
   }
   return EXIT_CODES.runtime;
