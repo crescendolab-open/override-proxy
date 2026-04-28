@@ -1,4 +1,4 @@
-# override-proxy
+# @crescendolab/override-proxy
 
 ## 0.1.0
 
