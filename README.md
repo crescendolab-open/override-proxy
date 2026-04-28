@@ -101,6 +101,17 @@ pnpm run build
 node dist/cli.js validate
 ```
 
+Release workflow:
+
+```bash
+pnpm changeset
+```
+
+Every user-facing change should include a changeset. After changes land on
+`main`, the Release workflow uses Changesets to open a version PR. Merging that
+version PR publishes to npm through `pnpm release`; the repository must provide
+an `NPM_TOKEN` secret for publishing.
+
 ## Environment Variables
 
 Load order (first wins, no overwrite): `.env.local` → `.env.default`
