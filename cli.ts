@@ -1,7 +1,10 @@
 #!/usr/bin/env node
 
 import fsExtra from "fs-extra";
+import { realpathSync } from "node:fs";
 import { pathToFileURL } from "node:url";
+import { require as tsxRequire } from "tsx/cjs/api";
+import { tsImport } from "tsx/esm/api";
 import {
   assertValidNormalizedConfig,
   discoverConfigFile,
@@ -155,7 +158,7 @@ async function loadUserConfig(
   configFile: string,
   context: OverrideProxyConfigContext,
 ): Promise<OverrideProxyConfig> {
-  const mod = toModuleRecord(await import(pathToFileURL(configFile).href));
+  const mod = toModuleRecord(await importConfigModule(configFile));
   const config = mod["default"] ?? mod["config"];
   if (!isOverrideProxyConfigExport(config)) {
     throw new ConfigLoaderError(
@@ -194,6 +197,25 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
+async function importConfigModule(configFile: string): Promise<unknown> {
+  const configUrl = pathToFileURL(configFile).href;
+  if (isEsmTypeScriptConfig(configFile)) {
+    return tsImport(configUrl, import.meta.url);
+  }
+  if (isTypeScriptConfig(configFile)) {
+    return tsxRequire(configFile, import.meta.url);
+  }
+  return import(configUrl);
+}
+
+function isEsmTypeScriptConfig(configFile: string): boolean {
+  return configFile.endsWith(".mts");
+}
+
+function isTypeScriptConfig(configFile: string): boolean {
+  return configFile.endsWith(".ts") || configFile.endsWith(".cts");
+}
+
 function classifyError(error: unknown): number {
   if (error instanceof ConfigLoaderError) return EXIT_CODES.loader;
   if (error instanceof Error && error.name === "ConfigValidationError") {
@@ -202,6 +224,20 @@ function classifyError(error: unknown): number {
   return EXIT_CODES.runtime;
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
+function isCliEntrypoint(argv: readonly string[]): boolean {
+  const entrypoint = argv[1];
+  if (!entrypoint) return false;
+  return import.meta.url === pathToFileURL(resolveEntrypoint(entrypoint)).href;
+}
+
+function resolveEntrypoint(entrypoint: string): string {
+  try {
+    return realpathSync(entrypoint);
+  } catch {
+    return entrypoint;
+  }
+}
+
+if (isCliEntrypoint(process.argv)) {
   process.exitCode = await runCli();
 }

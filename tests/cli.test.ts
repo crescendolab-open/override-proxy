@@ -27,16 +27,25 @@ const packageJson: unknown = JSON.parse(
   await readFile(new URL("../package.json", import.meta.url), "utf8"),
 );
 
-assert.equal(readPath(packageJson, ["bin", "override-proxy"]), "./dist/cli.js");
+assert.equal(readPath(packageJson, ["bin", "override-proxy"]), "dist/cli.js");
 assert.equal(readPath(packageJson, ["main"]), "./dist/index.js");
 assert.equal(readPath(packageJson, ["types"]), "./dist/index.d.ts");
 assert.equal(
   readPath(packageJson, ["scripts", "build"]),
   "tsc -p tsconfig.build.json",
 );
+assert.equal(
+  readPath(packageJson, ["scripts", "test"]),
+  "node --import tsx --test tests/*.test.ts",
+);
+assert.equal(readPath(packageJson, ["engines", "node"]), ">=20.19.0");
 assert.ok(readPath(packageJson, ["exports", "."]));
 assert.ok(readPath(packageJson, ["exports", "./main"]));
 assert.ok(readPath(packageJson, ["exports", "./cli"]));
+assert.equal(
+  readPath(packageJson, ["exports", ".", "require"]),
+  "./dist/index.js",
+);
 
 const tempDir = await mkdtemp(join(tmpdir(), "override-proxy-cli-"));
 
@@ -45,6 +54,7 @@ try {
   const explicitConfig = join(tempDir, "explicit.config.mjs");
   const factoryConfig = join(tempDir, "factory.config.mjs");
   const asyncFactoryConfig = join(tempDir, "async-factory.config.mjs");
+  const typescriptConfig = join(tempDir, "typescript.config.ts");
   const invalidConfig = join(tempDir, "invalid.config.mjs");
 
   await writeFile(
@@ -76,6 +86,17 @@ export default ({ cwd }) => ({
     `
 export default async () => ({
   servers: [{ routes: [{ path: "/", target: "http://async-factory.example" }] }],
+});
+`,
+  );
+  await writeFile(join(tempDir, "package.json"), `{"type":"commonjs"}\n`);
+  await writeFile(
+    typescriptConfig,
+    `
+import { basename } from "node:path";
+
+export default ({ cwd }) => ({
+  servers: [{ routes: [{ path: "/", target: "http://typescript.example/" + basename(cwd) }] }],
 });
 `,
   );
@@ -117,6 +138,14 @@ export default {
   assert.equal(
     asyncFactory.normalizedConfig.servers[0]!.routes[0]!.target,
     "http://async-factory.example",
+  );
+
+  const typescript = await loadCliConfig(["--config", typescriptConfig], {
+    cwd: tempDir,
+  });
+  assert.equal(
+    typescript.normalizedConfig.servers[0]!.routes[0]!.target,
+    `http://typescript.example/${tempDir.split("/").pop()}`,
   );
 
   const legacyDir = await mkdtemp(join(tmpdir(), "override-proxy-legacy-"));
