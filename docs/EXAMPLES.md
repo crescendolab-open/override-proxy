@@ -2,6 +2,230 @@
 
 Practical, copy-paste-ready examples organized by scenario. Each example includes full code, test commands, and expected output.
 
+## Config Examples
+
+### Multi-Route HTTP Config
+
+**Scenario:** Serve `/api/*` from one upstream, `/assets/*` from another, and use `/` as a root fallback.
+
+```typescript
+// override-proxy.config.ts
+import { defineConfig } from "./config.js";
+
+export default defineConfig({
+  servers: [
+    {
+      name: "main",
+      host: "127.0.0.1",
+      port: 4000,
+      routes: [
+        {
+          name: "api",
+          path: "/api",
+          target: "https://api.example.com",
+          rulesDir: "./rules/api",
+          rewrite: { stripPrefix: true },
+        },
+        {
+          name: "assets",
+          path: "/assets",
+          target: "https://assets.example.com",
+          rulesDir: "./rules/assets",
+        },
+        {
+          name: "root",
+          path: "/",
+          target: "https://www.example.com",
+          rulesDir: "./rules/root",
+        },
+      ],
+    },
+  ],
+});
+```
+
+**Run:**
+
+```bash
+pnpm exec tsx cli.ts serve --config ./override-proxy.config.ts
+```
+
+Route matching is segment-aware: `/api/users` matches `/api`, but `/apix` does not.
+
+### Multiple Local Servers
+
+**Scenario:** Run API and admin proxy servers in one process.
+
+```typescript
+// override-proxy.config.ts
+import { defineConfig } from "./config.js";
+
+export default defineConfig({
+  servers: [
+    {
+      name: "api",
+      port: 4000,
+      routes: [
+        {
+          path: "/",
+          target: "https://api.example.com",
+          rulesDir: "./rules/api",
+        },
+      ],
+    },
+    {
+      name: "admin",
+      port: 4100,
+      routes: [
+        {
+          path: "/",
+          target: "https://admin.example.com",
+          rulesDir: "./rules/admin",
+        },
+      ],
+    },
+  ],
+});
+```
+
+**Validate:**
+
+```bash
+pnpm exec tsx cli.ts validate --config ./override-proxy.config.ts
+```
+
+## WebSocket Examples
+
+WebSocket support is for raw WebSocket traffic. Socket.IO uses an additional protocol and is not decoded by `wsRule()`.
+
+### Direct WebSocket Proxy
+
+**Scenario:** Forward WebSocket traffic unchanged.
+
+```typescript
+// override-proxy.config.ts
+import { defineConfig } from "./config.js";
+
+export default defineConfig({
+  servers: [
+    {
+      port: 4000,
+      routes: [
+        {
+          name: "chat",
+          path: "/ws/chat",
+          ws: {
+            mode: "direct",
+            target: "wss://chat.example.com",
+          },
+          http: false,
+        },
+      ],
+    },
+  ],
+});
+```
+
+### Bridge: Mutate Both Directions
+
+**Scenario:** Add a field before client messages reach upstream, then rewrite an upstream response.
+
+```typescript
+// rules/ws/chat.ts
+import { wsRule } from "../../utils.js";
+
+export const PatchClientMessage = wsRule({
+  test: (ctx) =>
+    ctx.direction === "client" && ctx.jsonObject?.["type"] === "message",
+  handler: (ctx) =>
+    ctx.forward({
+      ...ctx.jsonObject,
+      patchedByProxy: true,
+    }),
+});
+
+export const PatchUpstreamMessage = wsRule({
+  test: (ctx) =>
+    ctx.direction === "upstream" && ctx.jsonObject?.["type"] === "message",
+  handler: (ctx) => {
+    ctx.emitToClient({ type: "proxy:seen" });
+    return ctx.forward({
+      ...ctx.jsonObject,
+      receivedByProxy: true,
+    });
+  },
+});
+```
+
+```typescript
+// override-proxy.config.ts
+import { defineConfig } from "./config.js";
+
+export default defineConfig({
+  servers: [
+    {
+      port: 4000,
+      routes: [
+        {
+          name: "chat",
+          path: "/ws/chat",
+          ws: {
+            mode: "bridge",
+            target: "wss://chat.example.com",
+            rulesDir: "./rules/ws",
+          },
+          http: false,
+        },
+      ],
+    },
+  ],
+});
+```
+
+### Mock-Only WebSocket
+
+**Scenario:** Accept a WebSocket client and emit custom JSON messages without upstream.
+
+```typescript
+// rules/ws/mock.ts
+import { wsRule } from "../../utils.js";
+
+export const MockChat = wsRule({
+  test: (ctx) => ctx.direction === "client",
+  handler: (ctx) => {
+    ctx.emitToClient({
+      type: "mock:reply",
+      text: ctx.text,
+      at: Date.now(),
+    });
+    return ctx.skip();
+  },
+});
+```
+
+```typescript
+// override-proxy.config.ts
+import { defineConfig } from "./config.js";
+
+export default defineConfig({
+  servers: [
+    {
+      port: 4000,
+      routes: [
+        {
+          name: "mock-chat",
+          path: "/ws/mock-chat",
+          ws: {
+            mode: "mock",
+            rulesDir: "./rules/ws",
+          },
+          http: false,
+        },
+      ],
+    },
+  ],
+});
+```
 
 ## Basic Examples
 
@@ -11,10 +235,10 @@ Practical, copy-paste-ready examples organized by scenario. Each example include
 
 ```typescript
 // rules/basic/hello.ts
-import { rule } from '../../utils.js';
+import { rule } from "../../utils.js";
 
-export const Hello = rule('GET', '/api/hello', (_req, res) => {
-  res.json({ message: 'Hello from override!', timestamp: Date.now() });
+export const Hello = rule("GET", "/api/hello", (_req, res) => {
+  res.json({ message: "Hello from override!", timestamp: Date.now() });
 });
 ```
 
@@ -41,18 +265,18 @@ curl http://localhost:4000/api/hello
 
 ```typescript
 // rules/basic/item.ts
-import { rule } from '../../utils.js';
+import { rule } from "../../utils.js";
 
-export const GetItem = rule('GET', '/api/item', (_req, res) => {
-  res.json({ id: 1, name: 'Item 1', status: 'active' });
+export const GetItem = rule("GET", "/api/item", (_req, res) => {
+  res.json({ id: 1, name: "Item 1", status: "active" });
 });
 
-export const CreateItem = rule('POST', '/api/item', (req, res) => {
+export const CreateItem = rule("POST", "/api/item", (req, res) => {
   const body = req.body || {};
   res.status(201).json({
     id: Date.now(),
-    name: body.name || 'New Item',
-    status: 'created',
+    name: body.name || "New Item",
+    status: "created",
   });
 });
 ```
@@ -77,20 +301,20 @@ curl -X POST http://localhost:4000/api/item \
 
 ```typescript
 // rules/basic/user-detail.ts
-import { rule } from '../../utils.js';
+import { rule } from "../../utils.js";
 
 export const UserDetail = rule({
-  methods: ['GET'],
+  methods: ["GET"],
   path: /^\/api\/users\/(\d+)$/,
   handler: (req, res) => {
     const match = req.path.match(/^\/api\/users\/(\d+)$/);
-    const userId = match ? match[1] : 'unknown';
+    const userId = match ? match[1] : "unknown";
 
     res.json({
       id: userId,
       name: `User ${userId}`,
       email: `user${userId}@example.com`,
-      source: 'override',
+      source: "override",
     });
   },
 });
@@ -121,12 +345,11 @@ curl http://localhost:4000/api/users/42
 
 ```typescript
 // rules/basic/feature-flag.ts
-import { rule } from '../../utils.js';
+import { rule } from "../../utils.js";
 
 export const FeatureFlag = rule({
-  methods: ['GET'],
-  test: (req) =>
-    req.path === '/api/features' && req.query['mock'] === 'true',
+  methods: ["GET"],
+  test: (req) => req.path === "/api/features" && req.query["mock"] === "true",
   handler: (_req, res) => {
     res.json({
       features: {
@@ -134,7 +357,7 @@ export const FeatureFlag = rule({
         betaUI: true,
         aiAssist: false,
       },
-      note: 'Mocked feature flags',
+      note: "Mocked feature flags",
     });
   },
 });
@@ -160,31 +383,35 @@ curl "http://localhost:4000/api/features"
 
 ```typescript
 // rules/auth/jwt-mock.ts
-import { rule } from '../../utils.js';
+import { rule } from "../../utils.js";
 
 export const JWTAuth = rule({
-  methods: ['GET'],
-  path: '/api/auth/me',
+  methods: ["GET"],
+  path: "/api/auth/me",
   handler: (req, res) => {
     const authHeader = req.headers.authorization;
 
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return res.status(401).json({ error: 'unauthorized', message: 'Missing token' });
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return res
+        .status(401)
+        .json({ error: "unauthorized", message: "Missing token" });
     }
 
-    const token = authHeader.replace('Bearer ', '');
+    const token = authHeader.replace("Bearer ", "");
 
     // Mock token validation (in real world, verify JWT signature)
-    if (token === 'valid-token-123') {
+    if (token === "valid-token-123") {
       return res.json({
         id: 1,
-        email: 'user@example.com',
-        name: 'Test User',
-        roles: ['user', 'admin'],
+        email: "user@example.com",
+        name: "Test User",
+        roles: ["user", "admin"],
       });
     }
 
-    return res.status(403).json({ error: 'forbidden', message: 'Invalid token' });
+    return res
+      .status(403)
+      .json({ error: "forbidden", message: "Invalid token" });
   },
 });
 ```
@@ -212,22 +439,22 @@ curl http://localhost:4000/api/auth/me
 
 ```typescript
 // rules/auth/api-key.ts
-import { rule } from '../../utils.js';
+import { rule } from "../../utils.js";
 
-const VALID_KEYS = ['key-alpha', 'key-beta', 'key-gamma'];
+const VALID_KEYS = ["key-alpha", "key-beta", "key-gamma"];
 
 export const APIKeyAuth = rule({
-  methods: ['GET', 'POST'],
-  test: (req) => req.path.startsWith('/api/v1/'),
+  methods: ["GET", "POST"],
+  test: (req) => req.path.startsWith("/api/v1/"),
   handler: (req, res, next) => {
-    const apiKey = req.headers['x-api-key'] as string;
+    const apiKey = req.headers["x-api-key"] as string;
 
     if (!apiKey) {
-      return res.status(401).json({ error: 'missing_api_key' });
+      return res.status(401).json({ error: "missing_api_key" });
     }
 
     if (!VALID_KEYS.includes(apiKey)) {
-      return res.status(403).json({ error: 'invalid_api_key' });
+      return res.status(403).json({ error: "invalid_api_key" });
     }
 
     // Valid key - pass through to next middleware or proxy
@@ -256,18 +483,18 @@ curl http://localhost:4000/api/v1/data \
 
 ```typescript
 // rules/auth/rbac.ts
-import { rule } from '../../utils.js';
+import { rule } from "../../utils.js";
 
 export const AdminEndpoint = rule({
-  methods: ['GET'],
-  path: '/api/admin/stats',
+  methods: ["GET"],
+  path: "/api/admin/stats",
   handler: (req, res) => {
-    const userRole = req.headers['x-user-role'] as string;
+    const userRole = req.headers["x-user-role"] as string;
 
-    if (userRole !== 'admin') {
+    if (userRole !== "admin") {
       return res.status(403).json({
-        error: 'forbidden',
-        message: 'Admin access required',
+        error: "forbidden",
+        message: "Admin access required",
       });
     }
 
@@ -303,14 +530,15 @@ curl http://localhost:4000/api/admin/stats \
 
 ```typescript
 // rules/transform/add-fields.ts
-import { rule } from '../../utils.js';
+import { rule } from "../../utils.js";
 
 export const AddTimestamp = rule({
-  methods: ['GET'],
-  path: '/api/pokemon/pikachu',
+  methods: ["GET"],
+  path: "/api/pokemon/pikachu",
   handler: async (req, res) => {
     // Fetch from upstream
-    const upstream = process.env['PROXY_TARGET'] || 'https://pokeapi.co/api/v2/';
+    const upstream =
+      process.env["PROXY_TARGET"] || "https://pokeapi.co/api/v2/";
     const response = await fetch(`${upstream}pokemon/pikachu`);
     const data = await response.json();
 
@@ -318,7 +546,7 @@ export const AddTimestamp = rule({
     res.json({
       ...data,
       _meta: {
-        source: 'override-proxy',
+        source: "override-proxy",
         timestamp: new Date().toISOString(),
         cached: false,
       },
@@ -343,29 +571,29 @@ curl http://localhost:4000/api/pokemon/pikachu
 
 ```typescript
 // rules/transform/filter-fields.ts
-import { rule } from '../../utils.js';
+import { rule } from "../../utils.js";
 
 export const FilterUserData = rule({
-  methods: ['GET'],
-  path: '/api/users/list',
+  methods: ["GET"],
+  path: "/api/users/list",
   handler: (_req, res) => {
     // Simulate full data
     const fullData = [
       {
         id: 1,
-        name: 'Alice',
-        email: 'alice@example.com',
-        password: 'hashed',
-        ssn: '123-45-6789',
-        internalNote: 'VIP customer',
+        name: "Alice",
+        email: "alice@example.com",
+        password: "hashed",
+        ssn: "123-45-6789",
+        internalNote: "VIP customer",
       },
       {
         id: 2,
-        name: 'Bob',
-        email: 'bob@example.com',
-        password: 'hashed',
-        ssn: '987-65-4321',
-        internalNote: 'Regular',
+        name: "Bob",
+        email: "bob@example.com",
+        password: "hashed",
+        ssn: "987-65-4321",
+        internalNote: "Regular",
       },
     ];
 
@@ -406,17 +634,17 @@ curl http://localhost:4000/api/users/list
 
 ```typescript
 // rules/transform/aggregate.ts
-import { rule } from '../../utils.js';
+import { rule } from "../../utils.js";
 
 export const Dashboard = rule({
-  methods: ['GET'],
-  path: '/api/dashboard',
+  methods: ["GET"],
+  path: "/api/dashboard",
   handler: async (_req, res) => {
     // Simulate fetching from multiple sources
     const [userStats, orderStats, systemHealth] = await Promise.all([
       Promise.resolve({ totalUsers: 1500, activeNow: 230 }),
       Promise.resolve({ ordersToday: 45, revenue: 3200.5 }),
-      Promise.resolve({ status: 'healthy', uptime: '99.9%' }),
+      Promise.resolve({ status: "healthy", uptime: "99.9%" }),
     ]);
 
     res.json({
@@ -447,15 +675,15 @@ curl http://localhost:4000/api/dashboard
 
 ```typescript
 // rules/conditional/mock-toggle.ts
-import { rule } from '../../utils.js';
+import { rule } from "../../utils.js";
 
 export const ConditionalMock = rule({
-  methods: ['GET'],
-  path: '/api/data',
+  methods: ["GET"],
+  path: "/api/data",
   handler: (req, res, next) => {
     // Check for mock header
-    if (req.headers['x-use-mock'] === '1') {
-      return res.json({ data: 'mocked', source: 'override' });
+    if (req.headers["x-use-mock"] === "1") {
+      return res.json({ data: "mocked", source: "override" });
     }
 
     // Pass through to upstream
@@ -483,26 +711,27 @@ curl http://localhost:4000/api/data
 
 ```typescript
 // rules/conditional/ab-test.ts
-import { rule } from '../../utils.js';
+import { rule } from "../../utils.js";
 
 export const ABTest = rule({
-  methods: ['GET'],
-  path: '/api/feature/new-ui',
+  methods: ["GET"],
+  path: "/api/feature/new-ui",
   handler: (req, res) => {
-    const userId = req.headers['x-user-id'] as string;
+    const userId = req.headers["x-user-id"] as string;
 
     if (!userId) {
-      return res.status(400).json({ error: 'missing_user_id' });
+      return res.status(400).json({ error: "missing_user_id" });
     }
 
     // Simple hash: even user IDs get variant A, odd get variant B
-    const variant = parseInt(userId, 10) % 2 === 0 ? 'A' : 'B';
+    const variant = parseInt(userId, 10) % 2 === 0 ? "A" : "B";
 
     res.json({
       variant,
-      features: variant === 'A'
-        ? { newUI: false, legacyMode: true }
-        : { newUI: true, legacyMode: false },
+      features:
+        variant === "A"
+          ? { newUI: false, legacyMode: true }
+          : { newUI: true, legacyMode: false },
     });
   },
 });
@@ -528,7 +757,7 @@ curl http://localhost:4000/api/feature/new-ui \
 
 ```typescript
 // rules/conditional/feature-flags.ts
-import { rule } from '../../utils.js';
+import { rule } from "../../utils.js";
 
 const DEFAULT_FLAGS = {
   darkMode: false,
@@ -537,10 +766,10 @@ const DEFAULT_FLAGS = {
 };
 
 export const FeatureFlags = rule({
-  methods: ['GET'],
-  path: '/api/flags',
+  methods: ["GET"],
+  path: "/api/flags",
   handler: (req, res, next) => {
-    const override = req.query['override'];
+    const override = req.query["override"];
 
     if (!override) {
       // No override - proxy to real flags service
@@ -548,15 +777,18 @@ export const FeatureFlags = rule({
     }
 
     // Parse override flags from query string
-    const overrideFlags = (override as string).split(',').reduce((acc, flag) => {
-      acc[flag] = true;
-      return acc;
-    }, {} as Record<string, boolean>);
+    const overrideFlags = (override as string).split(",").reduce(
+      (acc, flag) => {
+        acc[flag] = true;
+        return acc;
+      },
+      {} as Record<string, boolean>,
+    );
 
     res.json({
       ...DEFAULT_FLAGS,
       ...overrideFlags,
-      source: 'override',
+      source: "override",
     });
   },
 });
@@ -582,34 +814,34 @@ curl "http://localhost:4000/api/flags"
 
 ```typescript
 // rules/errors/client-errors.ts
-import { rule } from '../../utils.js';
+import { rule } from "../../utils.js";
 
-export const BadRequest = rule('POST', '/api/test/400', (_req, res) => {
+export const BadRequest = rule("POST", "/api/test/400", (_req, res) => {
   res.status(400).json({
-    error: 'bad_request',
-    message: 'Invalid input data',
+    error: "bad_request",
+    message: "Invalid input data",
     details: ['Field "email" is required', 'Field "age" must be a number'],
   });
 });
 
-export const Unauthorized = rule('GET', '/api/test/401', (_req, res) => {
+export const Unauthorized = rule("GET", "/api/test/401", (_req, res) => {
   res.status(401).json({
-    error: 'unauthorized',
-    message: 'Authentication required',
+    error: "unauthorized",
+    message: "Authentication required",
   });
 });
 
-export const Forbidden = rule('GET', '/api/test/403', (_req, res) => {
+export const Forbidden = rule("GET", "/api/test/403", (_req, res) => {
   res.status(403).json({
-    error: 'forbidden',
-    message: 'Insufficient permissions',
+    error: "forbidden",
+    message: "Insufficient permissions",
   });
 });
 
-export const NotFound = rule('GET', '/api/test/404', (_req, res) => {
+export const NotFound = rule("GET", "/api/test/404", (_req, res) => {
   res.status(404).json({
-    error: 'not_found',
-    message: 'Resource does not exist',
+    error: "not_found",
+    message: "Resource does not exist",
   });
 });
 ```
@@ -631,32 +863,36 @@ curl http://localhost:4000/api/test/404
 
 ```typescript
 // rules/errors/server-errors.ts
-import { rule } from '../../utils.js';
+import { rule } from "../../utils.js";
 
-export const InternalError = rule('GET', '/api/test/500', (_req, res) => {
+export const InternalError = rule("GET", "/api/test/500", (_req, res) => {
   res.status(500).json({
-    error: 'internal_server_error',
-    message: 'An unexpected error occurred',
+    error: "internal_server_error",
+    message: "An unexpected error occurred",
     requestId: `req_${Date.now()}`,
   });
 });
 
-export const ServiceUnavailable = rule('GET', '/api/test/503', (_req, res) => {
+export const ServiceUnavailable = rule("GET", "/api/test/503", (_req, res) => {
   res.status(503).json({
-    error: 'service_unavailable',
-    message: 'Service temporarily unavailable',
+    error: "service_unavailable",
+    message: "Service temporarily unavailable",
     retryAfter: 60,
   });
 });
 
-export const GatewayTimeout = rule('GET', '/api/test/504', async (_req, res) => {
-  // Simulate timeout
-  await new Promise((resolve) => setTimeout(resolve, 5000));
-  res.status(504).json({
-    error: 'gateway_timeout',
-    message: 'Upstream service did not respond in time',
-  });
-});
+export const GatewayTimeout = rule(
+  "GET",
+  "/api/test/504",
+  async (_req, res) => {
+    // Simulate timeout
+    await new Promise((resolve) => setTimeout(resolve, 5000));
+    res.status(504).json({
+      error: "gateway_timeout",
+      message: "Upstream service did not respond in time",
+    });
+  },
+);
 ```
 
 **Test:**
@@ -675,21 +911,21 @@ curl http://localhost:4000/api/test/504  # Will take 5 seconds
 
 ```typescript
 // rules/errors/chaos.ts
-import { rule } from '../../utils.js';
+import { rule } from "../../utils.js";
 
 export const RandomFailure = rule({
-  methods: ['GET'],
-  path: '/api/unstable',
+  methods: ["GET"],
+  path: "/api/unstable",
   handler: (_req, res) => {
     // 30% chance of failure
     if (Math.random() < 0.3) {
       return res.status(500).json({
-        error: 'random_failure',
-        message: 'Simulated random failure',
+        error: "random_failure",
+        message: "Simulated random failure",
       });
     }
 
-    res.json({ status: 'ok', data: 'Success!' });
+    res.json({ status: "ok", data: "Success!" });
   },
 });
 ```
@@ -714,17 +950,17 @@ done
 
 ```typescript
 // rules/latency/fixed-delay.ts
-import { rule } from '../../utils.js';
+import { rule } from "../../utils.js";
 
 export const SlowEndpoint = rule({
-  methods: ['GET'],
-  path: '/api/slow',
+  methods: ["GET"],
+  path: "/api/slow",
   handler: async (_req, res) => {
     // Wait 2 seconds
     await new Promise((resolve) => setTimeout(resolve, 2000));
 
     res.json({
-      message: 'This response was delayed by 2 seconds',
+      message: "This response was delayed by 2 seconds",
       timestamp: Date.now(),
     });
   },
@@ -745,18 +981,18 @@ time curl http://localhost:4000/api/slow
 
 ```typescript
 // rules/latency/random-delay.ts
-import { rule } from '../../utils.js';
+import { rule } from "../../utils.js";
 
 export const VariableLatency = rule({
-  methods: ['GET'],
-  path: '/api/variable',
+  methods: ["GET"],
+  path: "/api/variable",
   handler: async (_req, res) => {
     // Random delay between 100ms and 3000ms
     const delay = Math.floor(Math.random() * 2900) + 100;
     await new Promise((resolve) => setTimeout(resolve, delay));
 
     res.json({
-      message: 'Response with variable latency',
+      message: "Response with variable latency",
       delayMs: delay,
       timestamp: Date.now(),
     });
@@ -782,17 +1018,17 @@ done
 
 ```typescript
 // rules/latency/configured-delay.ts
-import { rule } from '../../utils.js';
+import { rule } from "../../utils.js";
 
 const LATENCY_CONFIG: Record<string, number> = {
-  '/api/fast': 50,
-  '/api/medium': 500,
-  '/api/slow': 2000,
+  "/api/fast": 50,
+  "/api/medium": 500,
+  "/api/slow": 2000,
 };
 
 function createDelayedEndpoint(path: string) {
   return rule({
-    methods: ['GET'],
+    methods: ["GET"],
     path,
     handler: async (_req, res) => {
       const delay = LATENCY_CONFIG[path] || 0;
@@ -807,9 +1043,9 @@ function createDelayedEndpoint(path: string) {
   });
 }
 
-export const FastEndpoint = createDelayedEndpoint('/api/fast');
-export const MediumEndpoint = createDelayedEndpoint('/api/medium');
-export const SlowEndpoint = createDelayedEndpoint('/api/slow');
+export const FastEndpoint = createDelayedEndpoint("/api/fast");
+export const MediumEndpoint = createDelayedEndpoint("/api/medium");
+export const SlowEndpoint = createDelayedEndpoint("/api/slow");
 ```
 
 **Test:**
@@ -830,7 +1066,7 @@ time curl http://localhost:4000/api/slow    # ~2000ms
 
 ```typescript
 // rules/stateful/todo-list.ts
-import { rule } from '../../utils.js';
+import { rule } from "../../utils.js";
 
 interface Todo {
   id: number;
@@ -841,19 +1077,24 @@ interface Todo {
 
 // In-memory store (resets on server restart)
 let todos: Todo[] = [
-  { id: 1, title: 'Learn override-proxy', completed: false, createdAt: Date.now() },
+  {
+    id: 1,
+    title: "Learn override-proxy",
+    completed: false,
+    createdAt: Date.now(),
+  },
 ];
 let nextId = 2;
 
-export const ListTodos = rule('GET', '/api/todos', (_req, res) => {
+export const ListTodos = rule("GET", "/api/todos", (_req, res) => {
   res.json({ todos, count: todos.length });
 });
 
-export const CreateTodo = rule('POST', '/api/todos', (req, res) => {
+export const CreateTodo = rule("POST", "/api/todos", (req, res) => {
   const { title } = req.body || {};
 
   if (!title) {
-    return res.status(400).json({ error: 'title_required' });
+    return res.status(400).json({ error: "title_required" });
   }
 
   const newTodo: Todo = {
@@ -868,7 +1109,7 @@ export const CreateTodo = rule('POST', '/api/todos', (req, res) => {
 });
 
 export const UpdateTodo = rule({
-  methods: ['PATCH'],
+  methods: ["PATCH"],
   path: /^\/api\/todos\/(\d+)$/,
   handler: (req, res) => {
     const match = req.path.match(/^\/api\/todos\/(\d+)$/);
@@ -876,7 +1117,7 @@ export const UpdateTodo = rule({
 
     const todo = todos.find((t) => t.id === id);
     if (!todo) {
-      return res.status(404).json({ error: 'todo_not_found' });
+      return res.status(404).json({ error: "todo_not_found" });
     }
 
     const { title, completed } = req.body || {};
@@ -888,7 +1129,7 @@ export const UpdateTodo = rule({
 });
 
 export const DeleteTodo = rule({
-  methods: ['DELETE'],
+  methods: ["DELETE"],
   path: /^\/api\/todos\/(\d+)$/,
   handler: (req, res) => {
     const match = req.path.match(/^\/api\/todos\/(\d+)$/);
@@ -896,7 +1137,7 @@ export const DeleteTodo = rule({
 
     const index = todos.findIndex((t) => t.id === id);
     if (index === -1) {
-      return res.status(404).json({ error: 'todo_not_found' });
+      return res.status(404).json({ error: "todo_not_found" });
     }
 
     todos.splice(index, 1);
@@ -935,7 +1176,7 @@ curl -X DELETE http://localhost:4000/api/todos/1
 
 ```typescript
 // rules/advanced/pagination.ts
-import { rule } from '../../utils.js';
+import { rule } from "../../utils.js";
 
 const ITEMS = Array.from({ length: 100 }, (_, i) => ({
   id: i + 1,
@@ -944,11 +1185,11 @@ const ITEMS = Array.from({ length: 100 }, (_, i) => ({
 }));
 
 export const PaginatedList = rule({
-  methods: ['GET'],
-  path: '/api/items',
+  methods: ["GET"],
+  path: "/api/items",
   handler: (req, res) => {
-    const page = parseInt((req.query.page as string) || '1', 10);
-    const limit = parseInt((req.query.limit as string) || '10', 10);
+    const page = parseInt((req.query.page as string) || "1", 10);
+    const limit = parseInt((req.query.limit as string) || "10", 10);
 
     const start = (page - 1) * limit;
     const end = start + limit;
@@ -992,32 +1233,36 @@ curl "http://localhost:4000/api/items?page=1&limit=25"
 
 ```typescript
 // rules/advanced/file-download.ts
-import { rule } from '../../utils.js';
+import { rule } from "../../utils.js";
 
-export const DownloadCSV = rule('GET', '/api/export/users.csv', (_req, res) => {
+export const DownloadCSV = rule("GET", "/api/export/users.csv", (_req, res) => {
   const csv = `id,name,email
 1,Alice,alice@example.com
 2,Bob,bob@example.com
 3,Charlie,charlie@example.com`;
 
-  res.setHeader('Content-Type', 'text/csv');
-  res.setHeader('Content-Disposition', 'attachment; filename="users.csv"');
+  res.setHeader("Content-Type", "text/csv");
+  res.setHeader("Content-Disposition", 'attachment; filename="users.csv"');
   res.send(csv);
 });
 
-export const DownloadJSON = rule('GET', '/api/export/data.json', (_req, res) => {
-  const data = {
-    users: [
-      { id: 1, name: 'Alice' },
-      { id: 2, name: 'Bob' },
-    ],
-    exportedAt: new Date().toISOString(),
-  };
+export const DownloadJSON = rule(
+  "GET",
+  "/api/export/data.json",
+  (_req, res) => {
+    const data = {
+      users: [
+        { id: 1, name: "Alice" },
+        { id: 2, name: "Bob" },
+      ],
+      exportedAt: new Date().toISOString(),
+    };
 
-  res.setHeader('Content-Type', 'application/json');
-  res.setHeader('Content-Disposition', 'attachment; filename="data.json"');
-  res.json(data);
-});
+    res.setHeader("Content-Type", "application/json");
+    res.setHeader("Content-Disposition", 'attachment; filename="data.json"');
+    res.json(data);
+  },
+);
 ```
 
 **Test:**
@@ -1035,16 +1280,16 @@ curl -O http://localhost:4000/api/export/data.json
 
 ```typescript
 // rules/advanced/graphql.ts
-import { rule } from '../../utils.js';
+import { rule } from "../../utils.js";
 
 export const GraphQLEndpoint = rule({
-  methods: ['POST'],
-  path: '/graphql',
+  methods: ["POST"],
+  path: "/graphql",
   handler: (req, res) => {
     const { query, variables } = req.body || {};
 
     // Simple query matching (in real world, parse AST)
-    if (query?.includes('query GetUser')) {
+    if (query?.includes("query GetUser")) {
       const userId = variables?.id || 1;
       return res.json({
         data: {
@@ -1057,19 +1302,19 @@ export const GraphQLEndpoint = rule({
       });
     }
 
-    if (query?.includes('mutation CreatePost')) {
+    if (query?.includes("mutation CreatePost")) {
       return res.json({
         data: {
           createPost: {
             id: Date.now(),
-            title: variables?.title || 'Untitled',
-            author: { id: 1, name: 'Alice' },
+            title: variables?.title || "Untitled",
+            author: { id: 1, name: "Alice" },
           },
         },
       });
     }
 
-    res.status(400).json({ errors: [{ message: 'Unknown query' }] });
+    res.status(400).json({ errors: [{ message: "Unknown query" }] });
   },
 });
 ```
@@ -1102,16 +1347,15 @@ curl -X POST http://localhost:4000/graphql \
 
 ```typescript
 // rules/advanced/websocket.ts
-import { rule } from '../../utils.js';
+import { rule } from "../../utils.js";
 
 export const WebSocketBlock = rule({
-  methods: ['GET'],
-  test: (req) =>
-    req.path === '/ws' && req.headers.upgrade === 'websocket',
+  methods: ["GET"],
+  test: (req) => req.path === "/ws" && req.headers.upgrade === "websocket",
   handler: (_req, res) => {
     res.status(400).json({
-      error: 'websocket_not_supported',
-      message: 'WebSocket connections are disabled in mock mode',
+      error: "websocket_not_supported",
+      message: "WebSocket connections are disabled in mock mode",
     });
   },
 });
@@ -1129,17 +1373,17 @@ export const WebSocketBlock = rule({
 
 ```typescript
 // rules/coordination/fallback.ts
-import { rule } from '../../utils.js';
+import { rule } from "../../utils.js";
 
 // Most specific - matches first
 export const SpecialUser = rule({
-  methods: ['GET'],
+  methods: ["GET"],
   path: /^\/api\/users\/999$/,
   handler: (_req, res) => {
     res.json({
       id: 999,
-      name: 'Super Admin',
-      role: 'admin',
+      name: "Super Admin",
+      role: "admin",
       special: true,
     });
   },
@@ -1147,16 +1391,16 @@ export const SpecialUser = rule({
 
 // Less specific - matches if above doesn't
 export const RegularUser = rule({
-  methods: ['GET'],
+  methods: ["GET"],
   path: /^\/api\/users\/(\d+)$/,
   handler: (req, res) => {
     const match = req.path.match(/^\/api\/users\/(\d+)$/);
-    const id = match ? match[1] : 'unknown';
+    const id = match ? match[1] : "unknown";
 
     res.json({
       id,
       name: `User ${id}`,
-      role: 'user',
+      role: "user",
     });
   },
 });
@@ -1182,8 +1426,8 @@ curl http://localhost:4000/api/users/123
 
 ```typescript
 // rules/coordination/shared-utils.ts
-import { rule } from '../../utils.js';
-import type { Request } from 'express';
+import { rule } from "../../utils.js";
+import type { Request } from "express";
 
 // Shared helper
 function extractUserId(req: Request): number | null {
@@ -1191,19 +1435,19 @@ function extractUserId(req: Request): number | null {
   if (!authHeader) return null;
 
   // Mock: extract user ID from token
-  const token = authHeader.replace('Bearer ', '');
+  const token = authHeader.replace("Bearer ", "");
   const match = token.match(/user-(\d+)/);
   return match ? parseInt(match[1], 10) : null;
 }
 
 export const UserProfile = rule({
-  methods: ['GET'],
-  path: '/api/profile',
+  methods: ["GET"],
+  path: "/api/profile",
   handler: (req, res) => {
     const userId = extractUserId(req);
 
     if (!userId) {
-      return res.status(401).json({ error: 'unauthorized' });
+      return res.status(401).json({ error: "unauthorized" });
     }
 
     res.json({
@@ -1215,20 +1459,20 @@ export const UserProfile = rule({
 });
 
 export const UserSettings = rule({
-  methods: ['GET'],
-  path: '/api/settings',
+  methods: ["GET"],
+  path: "/api/settings",
   handler: (req, res) => {
     const userId = extractUserId(req);
 
     if (!userId) {
-      return res.status(401).json({ error: 'unauthorized' });
+      return res.status(401).json({ error: "unauthorized" });
     }
 
     res.json({
       userId,
-      theme: 'dark',
+      theme: "dark",
       notifications: true,
-      language: 'en',
+      language: "en",
     });
   },
 });
@@ -1253,35 +1497,39 @@ curl http://localhost:4000/api/settings \
 
 ```typescript
 // rules/coordination/chain.ts
-import { rule } from '../../utils.js';
+import type { Request } from "express";
+import { rule } from "../../utils.js";
 
-// First rule: adds metadata, then passes through
+interface ChainMetadata {
+  timestamp: number;
+  source: string;
+}
+
+const metadataByRequest = new WeakMap<Request, ChainMetadata>();
+
 export const AddMetadata = rule({
-  methods: ['GET'],
-  path: '/api/chain',
+  methods: ["GET"],
+  path: "/api/chain",
   handler: (req, res, next) => {
-    // Augment request with custom property (use (req as any) for simplicity)
-    (req as any)._metadata = {
+    metadataByRequest.set(req, {
       timestamp: Date.now(),
-      source: 'override-proxy',
-    };
+      source: "override-proxy",
+    });
 
-    // Continue to next middleware
     next();
   },
 });
 
-// Second rule: uses metadata from first rule
 export const UseMetadata = rule({
-  methods: ['GET'],
-  path: '/api/chain',
+  methods: ["GET"],
+  path: "/api/chain",
   handler: (req, res) => {
-    const metadata = (req as any)._metadata || {};
+    const metadata = metadataByRequest.get(req);
 
     res.json({
-      message: 'Rule chain example',
+      message: "Rule chain example",
       metadata,
-      data: 'Final response',
+      data: "Final response",
     });
   },
 });
@@ -1365,9 +1613,9 @@ Add console.log to see when rules match:
 
 ```typescript
 export const Debug = rule({
-  path: '/api/data',
+  path: "/api/data",
   handler: (req, res) => {
-    console.log('Rule matched!', { path: req.path, query: req.query });
+    console.log("Rule matched!", { path: req.path, query: req.query });
     res.json({ ok: true });
   },
 });
@@ -1376,14 +1624,14 @@ export const Debug = rule({
 ### 2. Conditional Logging
 
 ```typescript
-const DEBUG = process.env['DEBUG'] === '1';
+const DEBUG = process.env["DEBUG"] === "1";
 
 export const Verbose = rule({
-  path: '/api/verbose',
+  path: "/api/verbose",
   handler: (req, res) => {
     if (DEBUG) {
-      console.log('Headers:', req.headers);
-      console.log('Query:', req.query);
+      console.log("Headers:", req.headers);
+      console.log("Query:", req.query);
     }
     res.json({ ok: true });
   },
@@ -1402,7 +1650,7 @@ app.use(express.json());
 Then access in rules:
 
 ```typescript
-export const HandlePost = rule('POST', '/api/data', (req, res) => {
+export const HandlePost = rule("POST", "/api/data", (req, res) => {
   const body = req.body; // Parsed JSON
   res.json({ received: body });
 });
@@ -1411,10 +1659,9 @@ export const HandlePost = rule('POST', '/api/data', (req, res) => {
 ### 4. Custom Headers
 
 ```typescript
-export const CustomHeaders = rule('GET', '/api/custom', (_req, res) => {
-  res.setHeader('X-Custom-Header', 'value');
-  res.setHeader('X-Response-Time', Date.now().toString());
-  res.json({ message: 'With custom headers' });
+export const CustomHeaders = rule("GET", "/api/custom", (_req, res) => {
+  res.setHeader("X-Custom-Header", "value");
+  res.setHeader("X-Response-Time", Date.now().toString());
+  res.json({ message: "With custom headers" });
 });
 ```
-

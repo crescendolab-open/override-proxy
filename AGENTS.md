@@ -9,8 +9,11 @@ precise, low-noise guidance so coding agents can modify the project safely.
 ## Documentation Quick Links
 
 When you need:
+
 - **Development tools** → [docs/TOOLS.md](docs/TOOLS.md) - Commands & scripts
 - **Visual architecture & code locations** → [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+- **Config / CLI / WebSocket design** → [docs/design/config.md](docs/design/config.md), [docs/design/cli.md](docs/design/cli.md), [docs/design/websocket.md](docs/design/websocket.md)
+- **Ordered implementation checklist** → [docs/design/implementation-plan.md](docs/design/implementation-plan.md)
 - **Copy-paste examples** → [docs/EXAMPLES.md](docs/EXAMPLES.md)
 - **Best practices & pitfalls** → [docs/PATTERNS.md](docs/PATTERNS.md)
 - **Documentation writing standards** → [docs/DOC-WRITING-GUIDE.md](docs/DOC-WRITING-GUIDE.md)
@@ -21,6 +24,7 @@ When you need:
 Use these to work faster:
 
 **Claude Code Commands** (custom slash commands):
+
 - `/rule` - Create rules with AI assistance and templates
 - `/rule-toggle` - Enable/disable rule groups
 - `/rule-diagnose` - Systematic debugging with fix recommendations
@@ -28,6 +32,7 @@ Use these to work faster:
 - `/migrate-from-msw` - Convert MSW handlers to override-proxy
 
 **Bash Scripts** (in `scripts/` directory):
+
 - `./scripts/toggle-rules.sh` - Quick CLI toggling
 - `./scripts/test-rules.sh` - Automated test runner
 - `./scripts/list-rules.sh` - Inspect rules
@@ -40,11 +45,20 @@ Full documentation: [docs/TOOLS.md](docs/TOOLS.md)
 
 - Type: Node.js (TypeScript, ESM `type: module`)
 - Purpose: Serve local override (mock) responses before proxying unmatched requests to an upstream API.
-- Entry point: `main.ts`
+- Legacy runtime entry: `main.ts`
+- Package API entry: `index.ts`
+- CLI source entry: `cli.ts`
 - Runtime: Node `v24.5.0` (see `.nvmrc`)
 - Package manager: `pnpm` (lockfile present)
 
-Exports (treat as public API for now):
+Package API exports:
+
+- `defineConfig`
+- `rule`
+- `wsRule`
+- public config and rule types
+
+Legacy runtime exports preserved from `main.ts` and the package `./main` subpath:
 
 - `app` (Express instance)
 - `overrides` (loaded rule list)
@@ -54,11 +68,15 @@ Exports (treat as public API for now):
 
 ## 2. Commands
 
-| Action              | Command            | Notes                                      |
-| ------------------- | ------------------ | ------------------------------------------ |
-| Install deps        | `pnpm install`     | Run first / after lock changes             |
-| Start dev server    | `pnpm dev`         | Uses `nodemon` to restart on TS/JS changes |
-| Type check (ad‑hoc) | `npx tsc --noEmit` | Project is strict; keep zero errors        |
+| Action              | Command                         | Notes                                      |
+| ------------------- | ------------------------------- | ------------------------------------------ |
+| Install deps        | `pnpm install`                  | Run first / after lock changes             |
+| Start dev server    | `pnpm dev`                      | Uses `nodemon` to restart on TS/JS changes |
+| Build package       | `pnpm run build`                | Emits `dist/` for package exports and bin  |
+| CLI serve           | `pnpm exec tsx cli.ts serve`    | Reads cwd config or legacy env mode        |
+| Validate config     | `pnpm exec tsx cli.ts validate` | Loads and validates without listening      |
+| Built CLI validate  | `node dist/cli.js validate`     | Verifies the standalone CLI output         |
+| Type check (ad‑hoc) | `npx tsc --noEmit`              | Project is strict; keep zero errors        |
 
 VS Code launch configs (`.vscode/launch.json`):
 
@@ -67,7 +85,7 @@ VS Code launch configs (`.vscode/launch.json`):
 | Dev (nodemon + tsx)      | Runs `pnpm dev` (nodemon + tsx) with auto-restart |
 | Run single (tsx main.ts) | Direct one-off execution without nodemon          |
 
-> No dedicated test suite yet. When adding features, prefer adding one (see Section 10) but do **not** block current tasks if unrequested.
+Focused no-dependency tests live under `tests/*.test.ts` and run with `pnpm exec tsx <file>`.
 
 ---
 
@@ -85,6 +103,13 @@ Variables (see `README.md` for expanded descriptions):
 - `CORS_ORIGINS` comma list; empty → allow all.
 
 Never hardcode secrets. Place sensitive values only in `.env.local`. Keep `.env.default` non-sensitive.
+
+Config mode:
+
+- Default discovery: `override-proxy.config.ts`, `.mts`, `.js`, `.mjs` in cwd.
+- `--config <path>` overrides discovery.
+- Config supports multiple servers, route-scoped HTTP rules, route-specific targets, rewrites, and WebSocket transports.
+- If no config exists, legacy mode preserves `PROXY_TARGET`, `PORT`, `CORS_ORIGINS`, built-in `rules/`, and optional `--rules-dir`.
 
 ---
 
@@ -114,10 +139,10 @@ Helper `rule()` forms (name option removed):
 
 ```ts
 // Overload form
-rule(method: string | string[], path: string | RegExp, handler, options?)
+rule(method: Method | readonly Method[], path: string | RegExp, handler, options?)
 
 // Config object form
-rule({ path?: string|RegExp, test?: (req)=>boolean, methods?: string[], name?, enabled?, handler })
+rule({ path?: string|RegExp, test?: (req)=>boolean, methods?: readonly Method[], name?, enabled?, handler })
 ```
 
 Rules:
@@ -131,7 +156,23 @@ Edge cases:
 
 - If `handler` calls `next()`, processing continues (rare—prefer return response).
 
-### 4.1 Rule Organization & Archival Strategy
+### 4.1 WebSocket Rules
+
+WebSocket rules are loaded from the route's `ws.rulesDir` / `ws.rulesDirs` plus route-level rule directories. Use `wsRule()` for raw WebSocket messages:
+
+```ts
+import { wsRule } from "../utils.js";
+
+export const PatchMessage = wsRule({
+  test: (ctx) =>
+    ctx.direction === "client" && ctx.jsonObject?.type === "message",
+  handler: (ctx) => ctx.forward({ ...ctx.jsonObject, patchedByProxy: true }),
+});
+```
+
+Supported actions: `forward`, `skip`, `emitToClient`, `emitToUpstream`, `close`, and `fail`. Bridge mode can mutate both client-to-upstream and upstream-to-client messages. Mock mode accepts client sockets without an upstream target. This is raw WebSocket support, not Socket.IO.
+
+### 4.2 Rule Organization & Archival Strategy
 
 The loader (`fast-glob` with `dot: false`) ignores dot-prefixed files/folders. Use this to manage groups:
 
@@ -145,6 +186,7 @@ The loader (`fast-glob` with `dot: false`) ignores dot-prefixed files/folders. U
 | Personal scratch        | `rules/.wip/` (also add to `.gitignore` if desired)     |
 
 **Toggle methods:**
+
 - **Single rule**: Set `enabled: false` in rule config (file still imports, rule shows as "(off)" in logs)
 - **Rule group**: Rename folder with dot prefix (files not imported at all)
 - **CLI tool**: Use `scripts/toggle-rules.sh` for quick group toggling
@@ -194,14 +236,14 @@ Avoid changing this behavior unless you add configurability; keep deterministic 
 
 ## 8. Safe Modification Guidelines
 
-| Area        | Rule                                                                                             |
-| ----------- | ------------------------------------------------------------------------------------------------ |
-| Imports     | Prefer existing deps; do **not** add new packages unless required.                               |
-| Style       | Prettier handles formatting (VSCode settings). Keep single quotes consistent with existing code. |
-| Type Safety | Maintain zero `tsc --noEmit` errors. Use explicit return types for exported helpers.             |
-| Exports     | Preserve `app`, `overrides`, `TARGET`. Document additions here if you export more.               |
-| Errors      | Use consistent JSON shape: `{ error: string, detail?: string }` for new error responses.         |
-| Logging     | Reuse existing helper functions instead of ad‑hoc `console.log`.                                 |
+| Area        | Rule                                                                                               |
+| ----------- | -------------------------------------------------------------------------------------------------- |
+| Imports     | Prefer existing deps; do **not** add new packages unless required.                                 |
+| Style       | Prettier handles formatting (VSCode settings). Keep single quotes consistent with existing code.   |
+| Type Safety | Maintain zero `tsc --noEmit` errors. Use explicit return types for exported helpers.               |
+| Exports     | Keep `index.ts` side-effect-free. Preserve legacy `main.ts` exports: `app`, `overrides`, `TARGET`. |
+| Errors      | Use consistent JSON shape: `{ error: string, detail?: string }` for new error responses.           |
+| Logging     | Reuse existing helper functions instead of ad‑hoc `console.log`.                                   |
 
 ---
 
@@ -214,10 +256,11 @@ Avoid changing this behavior unless you add configurability; keep deterministic 
 3. Implement using `rule()` helper with named export (export name becomes rule name).
 4. Use `path: '/api/foo'` or `path: /^\/api\/foo\//` or custom `test`.
 5. Return response via `res.json(...)`. Avoid blocking long operations; simulate delay with `await new Promise(r=>setTimeout(r, ms))`.
-6. Save: nodemon reloads automatically. Confirm presence in startup `Overrides:` list.
+6. Save: nodemon reloads automatically. Confirm the route rule count in startup logs.
 7. Send request; verify log shows `match <ruleName>` and `via override`.
 
 Example:
+
 ```typescript
 import { rule } from "../utils.js";
 
@@ -232,13 +275,24 @@ Disable temporarily by setting `enabled: false` (it will still list with `(off)`
 
 ## 10. (Optional) Introducing Tests
 
-Currently no test harness. If asked to add tests:
+Current tests are no-dependency `tsx` scripts:
+
+```bash
+pnpm exec tsx tests/config.test.ts
+pnpm exec tsx tests/http-routing.test.ts
+pnpm exec tsx tests/cli.test.ts
+pnpm exec tsx tests/ws-direct.test.ts
+pnpm exec tsx tests/ws-rules.test.ts
+pnpm exec tsx tests/ws-bridge.test.ts
+```
+
+If asked to add a formal test harness:
 
 - Add dev deps: `vitest` + `@types/node` (already implicitly covered by TS libs) & a script `"test": "vitest"`.
 - Place tests under `tests/` or alongside source with `.test.ts` suffix.
 - Test contracts: rule matching order, error handling (override error → 500), proxy fallback functionality, CORS behavior for allowed & disallowed origins.
 
-Do **not** add unless explicitly requested.
+Do **not** add a new harness unless explicitly requested.
 
 ---
 
@@ -260,7 +314,7 @@ Do **not** add unless explicitly requested.
 | Latency / fault injection | Configurable delay or 4xx/5xx simulation per rule |
 | Hot in-process reload     | Replace rule modules without full nodemon restart |
 | Metrics                   | Simple in-memory counters + timestamps            |
-| Priority ordering         | Explicit numeric `priority` field                 |
+| Rule priority ordering    | Explicit numeric priority for rules               |
 
 If implementing, update this file & README accordingly.
 

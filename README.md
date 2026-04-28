@@ -1,28 +1,36 @@
 # override-proxy
 
-Pluggable local development server that serves rule-based overrides first, then proxies unmatched requests to an upstream `PROXY_TARGET`.
+Pluggable local development server that serves rule-based HTTP and WebSocket overrides first, then proxies unmatched traffic to upstream targets.
 
 Key features:
 
 - Override-first: if a rule matches, respond immediately; otherwise proxy.
-- Dynamic rule loading from `rules/` (restart handled by nodemon).
+- Multi-server, route-scoped config with root and subdirectory routes.
+- Dynamic HTTP and WebSocket rule loading from rule directories.
+- Raw WebSocket direct proxy or bridge mode with bidirectional message actions.
+- CLI entry with config discovery, `serve`, `validate`, and legacy fallback.
 - Layered environment loading via `dotenvx` (`.env.local` then `.env.default`).
 
 ## Documentation
 
-| Document | Purpose |
-|----------|---------|
-| [README.md](README.md) | User guide and overview (you are here) |
-| [AGENTS.md](AGENTS.md) | Detailed guide for AI agents |
-| [docs/TOOLS.md](docs/TOOLS.md) | Development tools (Claude Code commands + bash scripts) |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Visual diagrams and code location index |
-| [docs/EXAMPLES.md](docs/EXAMPLES.md) | Copy-paste examples for common scenarios |
-| [docs/PATTERNS.md](docs/PATTERNS.md) | Best practices and common pitfalls |
-| [docs/DOC-WRITING-GUIDE.md](docs/DOC-WRITING-GUIDE.md) | Documentation writing standards (for contributors) |
+| Document                                                                 | Purpose                                                 |
+| ------------------------------------------------------------------------ | ------------------------------------------------------- |
+| [README.md](README.md)                                                   | User guide and overview (you are here)                  |
+| [AGENTS.md](AGENTS.md)                                                   | Detailed guide for AI agents                            |
+| [docs/TOOLS.md](docs/TOOLS.md)                                           | Development tools (Claude Code commands + bash scripts) |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)                             | Visual diagrams and code location index                 |
+| [docs/design/config.md](docs/design/config.md)                           | Config model for multi-server routing                   |
+| [docs/design/websocket.md](docs/design/websocket.md)                     | WebSocket proxy and rule semantics                      |
+| [docs/design/cli.md](docs/design/cli.md)                                 | CLI behavior                                            |
+| [docs/design/implementation-plan.md](docs/design/implementation-plan.md) | Ordered implementation checklist                        |
+| [docs/EXAMPLES.md](docs/EXAMPLES.md)                                     | Copy-paste examples for common scenarios                |
+| [docs/PATTERNS.md](docs/PATTERNS.md)                                     | Best practices and common pitfalls                      |
+| [docs/DOC-WRITING-GUIDE.md](docs/DOC-WRITING-GUIDE.md)                   | Documentation writing standards (for contributors)      |
 
 ## Development Tools
 
 **Claude Code Commands** (custom slash commands):
+
 - `/rule` - Create new rules with templates
 - `/rule-toggle` - Enable/disable rule groups
 - `/rule-diagnose` - Debug non-working rules
@@ -30,6 +38,7 @@ Key features:
 - `/migrate-from-msw` - Convert MSW handlers
 
 **Bash Scripts**:
+
 - `scripts/toggle-rules.sh` - Quick enable/disable
 - `scripts/test-rules.sh` - Automated testing
 - `scripts/list-rules.sh` - List all rules
@@ -43,10 +52,26 @@ pnpm install
 pnpm dev
 ```
 
+`pnpm dev` runs the CLI serve path through `nodemon`.
+
 Smoke test:
 
 ```bash
 curl http://localhost:4000/__env
+```
+
+Validate a config file without listening:
+
+```bash
+pnpm exec tsx cli.ts validate
+pnpm exec tsx cli.ts validate --config ./override-proxy.config.ts
+```
+
+Build the standalone package entrypoints:
+
+```bash
+pnpm run build
+node dist/cli.js validate
 ```
 
 ## Environment Variables
@@ -68,6 +93,68 @@ PORT=4000
 | CORS_ORIGINS | Allowed origins (comma list, empty = allow all) | (empty)                      |
 
 > Put secrets only in `.env.local` (ignored by git). `.env.default` is committed and should remain non-sensitive.
+
+## CLI And Config Files
+
+The CLI command defaults to `serve`. In this source checkout, run it through `tsx`:
+
+```bash
+pnpm exec tsx cli.ts
+pnpm exec tsx cli.ts serve --config ./override-proxy.config.ts
+pnpm exec tsx cli.ts validate --config ./override-proxy.config.ts
+```
+
+After `pnpm run build`, the package exposes `override-proxy` from `./dist/cli.js`. Installed package usage:
+
+```bash
+override-proxy
+override-proxy serve --config ./override-proxy.config.ts
+override-proxy validate --config ./override-proxy.config.ts
+```
+
+When consuming the built or installed package, config files can import helpers from `override-proxy`. In this source checkout before building, import from local source files such as `./config.js`.
+
+Default config discovery checks the current working directory for:
+
+1. `override-proxy.config.ts`
+2. `override-proxy.config.mts`
+3. `override-proxy.config.js`
+4. `override-proxy.config.mjs`
+
+If no config file exists, override-proxy runs in legacy mode using `PROXY_TARGET`, `PORT`, `CORS_ORIGINS`, the built-in `rules/` directory, and optional `--rules-dir`.
+
+Example multi-route config:
+
+```ts
+import { defineConfig } from "./config.js";
+
+export default defineConfig({
+  servers: [
+    {
+      name: "main",
+      host: "127.0.0.1",
+      port: 4000,
+      routes: [
+        {
+          name: "api",
+          path: "/api",
+          target: "https://api.example.com",
+          rulesDir: "./rules/api",
+          rewrite: { stripPrefix: true },
+        },
+        {
+          name: "root",
+          path: "/",
+          target: "https://www.example.com",
+          rulesDir: "./rules/root",
+        },
+      ],
+    },
+  ],
+});
+```
+
+Routes are matched by pathname with priority, longest segment-aware prefix, declaration order, and root fallback.
 
 ## Rule System
 
@@ -92,13 +179,13 @@ Helper creation styles:
 1. Overload form:
 
 ```ts
-rule(method: string | string[], path: string | RegExp, handler, options?)
+rule(method: Method | readonly Method[], path: string | RegExp, handler, options?)
 ```
 
 1. Config object form:
 
 ```ts
-rule({ path?: string|RegExp, test?: (req)=>boolean, methods?: string[], name?, enabled?, handler })
+rule({ path?: string|RegExp, test?: (req)=>boolean, methods?: readonly Method[], name?, enabled?, handler })
 ```
 
 Constraints:
@@ -115,6 +202,38 @@ Export patterns:
 4. Any other named export that is an `OverrideRule` (or an array of them) will be loaded.
 
 > Naming: when using named exports, the export identifier overrides any `name` set inside `rule()` options (the `name` option is deprecated).
+
+## WebSocket Rules
+
+WebSocket support targets raw WebSocket traffic. It does not implement Socket.IO protocol semantics.
+
+Route config supports three modes:
+
+| Mode     | Behavior                                                                 |
+| -------- | ------------------------------------------------------------------------ |
+| `direct` | Transparent WebSocket proxy using the upstream target                    |
+| `bridge` | Accept client socket, optionally connect upstream, and run message rules |
+| `mock`   | Accept client socket without opening an upstream connection              |
+
+Bridge and mock rules use `wsRule()`:
+
+```ts
+import { wsRule } from "../../utils.js";
+
+export const PatchChatMessage = wsRule({
+  test: (ctx) =>
+    ctx.direction === "client" && ctx.jsonObject?.["type"] === "message",
+  handler: (ctx) => {
+    ctx.emitToClient({ type: "proxy:seen" });
+    return ctx.forward({
+      ...ctx.jsonObject,
+      patchedByProxy: true,
+    });
+  },
+});
+```
+
+Each message context includes `raw`, `text`, `json`, `jsonObject`, `direction`, route metadata, request headers, and action helpers. Supported actions are `forward`, `skip`, `emitToClient`, `emitToUpstream`, `close`, and `fail`.
 
 ## Examples
 
@@ -175,10 +294,11 @@ export default rule({
 
 ## Built-in Endpoints
 
-| Path     | Method | Description                          |
-| -------- | ------ | ------------------------------------ |
-| /\_\_env | GET    | Basic non-sensitive environment info |
-| \*       | ANY    | Proxy fallback                       |
+| Path          | Method | Description                           |
+| ------------- | ------ | ------------------------------------- |
+| `/__env`      | GET    | Legacy non-sensitive environment info |
+| `/__override` | GET    | Config-mode server and route snapshot |
+| `*`           | ANY    | Route-specific proxy fallback         |
 
 Logging pattern: `[id] -> METHOD path` / `match ruleName` / completion line with status & source.
 
@@ -196,13 +316,23 @@ Restrict CORS: `CORS_ORIGINS=http://localhost:3000,https://dev.example.com`
 
 ```text
 .
+├─ cli.ts
+├─ index.ts
+├─ config.ts
+├─ server-runtime.ts
+├─ http-app.ts
+├─ ws-direct-proxy.ts
+├─ ws-bridge.ts
+├─ rule-loader.ts
 ├─ main.ts
 ├─ utils.ts
 ├─ rules/
 │  └─ _demo.ts
+├─ tests/
 ├─ .env.default
 ├─ package.json
 ├─ tsconfig.json
+├─ tsconfig.build.json
 └─ nodemon.json
 ```
 
@@ -211,6 +341,7 @@ Restrict CORS: `CORS_ORIGINS=http://localhost:3000,https://dev.example.com`
 Simulate latency: `await new Promise(r => setTimeout(r, 800));`  
 Conditional pass-through: `handler: (req,res,next)=> req.query["passthrough"]? next(): res.json({x:1})`  
 Header trigger: `test: (req)=> req.headers["x-mock-mode"] === "1"`
+WebSocket mock event: `ctx.emitToClient({ type: "proxy:ready" }); return ctx.skip();`
 
 ## Security Notes
 
@@ -293,14 +424,14 @@ Bring them back by moving the folder out (and removing any leading dot).
 
 ### 11.8 Quick Lifecycle Table
 
-| Action                | Steps                                 |
-| --------------------- | ------------------------------------- |
-| Add feature pack      | Create folder, add rule files, commit |
-| Disable single rule   | Add `enabled: false` to rule config   |
-| Disable rule group    | Rename folder to `.folderName`        |
-| Archive               | Move into `rules/.trash/<folder>`     |
-| Restore               | Move back / remove leading dot        |
-| Share                 | Push & teammates restart proxy        |
+| Action              | Steps                                 |
+| ------------------- | ------------------------------------- |
+| Add feature pack    | Create folder, add rule files, commit |
+| Disable single rule | Add `enabled: false` to rule config   |
+| Disable rule group  | Rename folder to `.folderName`        |
+| Archive             | Move into `rules/.trash/<folder>`     |
+| Restore             | Move back / remove leading dot        |
+| Share               | Push & teammates restart proxy        |
 
 ### 11.9 Why Folders over Config Flags?
 

@@ -50,6 +50,7 @@ rules/
 ```
 
 **Benefits:**
+
 - Easy to disable entire features (rename folder to `.auth/`)
 - Clear ownership and responsibility
 - Better discoverability
@@ -94,23 +95,23 @@ rules/
 ```typescript
 // rules/_helpers/auth.ts
 export function requireAuth(req: Request): { valid: boolean; userId?: number } {
-  const token = req.headers.authorization?.replace('Bearer ', '');
-  if (token === 'valid-token') {
+  const token = req.headers.authorization?.replace("Bearer ", "");
+  if (token === "valid-token") {
     return { valid: true, userId: 1 };
   }
   return { valid: false };
 }
 
 // rules/users.ts
-import { rule } from '../utils.js';
-import { requireAuth } from './_helpers/auth.js';
+import { rule } from "../utils.js";
+import { requireAuth } from "./_helpers/auth.js";
 
-export const UserProfile = rule('GET', '/api/profile', (req, res) => {
+export const UserProfile = rule("GET", "/api/profile", (req, res) => {
   const auth = requireAuth(req);
   if (!auth.valid) {
-    return res.status(401).json({ error: 'unauthorized' });
+    return res.status(401).json({ error: "unauthorized" });
   }
-  res.json({ id: auth.userId, name: 'Test User' });
+  res.json({ id: auth.userId, name: "Test User" });
 });
 ```
 
@@ -134,9 +135,111 @@ rules/
 ```
 
 **Benefits:**
+
 - Testable business logic
 - Reusable across rules
 - Clear separation of concerns
+
+---
+
+## Route-Scoped Config Patterns
+
+### Pattern 6: Keep Root as the Fallback Route
+
+Use specific prefixes for API areas and keep `/` last as the fallback route.
+
+```typescript
+export default defineConfig({
+  servers: [
+    {
+      routes: [
+        {
+          name: "api",
+          path: "/api",
+          target: "https://api.example.com",
+          rulesDir: "./rules/api",
+        },
+        {
+          name: "root",
+          path: "/",
+          target: "https://www.example.com",
+          rulesDir: "./rules/root",
+        },
+      ],
+    },
+  ],
+});
+```
+
+Routes are sorted by priority, longest segment-aware prefix, declaration order, and root fallback. Do not rely on query strings for route selection; queries belong in rule `test()` logic.
+
+### Pattern 7: Put Shared Rules at the Route Level
+
+Route-level `rulesDir` is included by both HTTP and WebSocket transports. Use transport-specific directories only when the logic is specific to one protocol.
+
+```typescript
+{
+  path: '/chat',
+  target: 'https://api.example.com',
+  rulesDir: './rules/chat-shared',
+  http: {
+    rulesDir: './rules/chat-http',
+  },
+  ws: {
+    mode: 'bridge',
+    target: 'wss://api.example.com',
+    rulesDir: './rules/chat-ws',
+  },
+}
+```
+
+### Pattern 8: Rewrite Explicitly
+
+Use `rewrite.stripPrefix` when the local route is a mount point that should not be sent upstream.
+
+```typescript
+{
+  path: '/api',
+  target: 'https://api.example.com',
+  rewrite: { stripPrefix: true },
+}
+```
+
+Without rewrite, `/api/users` is proxied as `/api/users`.
+
+---
+
+## WebSocket Patterns
+
+### Pattern 9: Choose the Cheapest WebSocket Mode
+
+| Need                          | Mode     |
+| ----------------------------- | -------- |
+| Forward traffic unchanged     | `direct` |
+| Inspect or mutate messages    | `bridge` |
+| Emit local mock messages only | `mock`   |
+
+Start with `direct` when no message-level behavior is needed. Use `bridge` only when rules need `raw`, `text`, `json`, or `jsonObject`.
+
+### Pattern 10: Treat Custom Events as Messages
+
+Raw WebSocket has no built-in event envelope. Represent custom events as normal JSON messages.
+
+```typescript
+ctx.emitToClient({
+  type: "proxy:seen",
+  payload: {
+    at: Date.now(),
+  },
+});
+return ctx.forward();
+```
+
+### Pattern 11: Keep Socket.IO Separate
+
+Socket.IO is not plain WebSocket messaging. It adds its own handshake, framing, heartbeat, event names, and acknowledgements. A raw `wsRule()` can forward Socket.IO bytes, but it should not be expected to understand Socket.IO events.
+
+If Socket.IO support is needed later, add a dedicated adapter instead of overloading raw WebSocket rule semantics.
 
 ---
 
@@ -144,15 +247,15 @@ rules/
 
 ### File Names
 
-| Type | Convention | Examples |
-|------|------------|----------|
-| Single endpoint | `{resource}-{action}.ts` | `user-create.ts`, `order-cancel.ts` |
-| Multiple related | `{resource}.ts` | `users.ts`, `products.ts` |
-| Feature group | `{feature}/` folder | `auth/`, `commerce/` |
+| Type              | Convention                  | Examples                             |
+| ----------------- | --------------------------- | ------------------------------------ |
+| Single endpoint   | `{resource}-{action}.ts`    | `user-create.ts`, `order-cancel.ts`  |
+| Multiple related  | `{resource}.ts`             | `users.ts`, `products.ts`            |
+| Feature group     | `{feature}/` folder         | `auth/`, `commerce/`                 |
 | Helpers/utilities | `_{name}.ts` or `_helpers/` | `_validators.ts`, `_helpers/auth.ts` |
-| Test data | `_{resource}-data.ts` | `_users-data.ts` |
-| Archived | `.trash/{name}/` | `.trash/old-feature/` |
-| WIP/Personal | `.wip/` or `.{name}/` | `.wip/experimental.ts` |
+| Test data         | `_{resource}-data.ts`       | `_users-data.ts`                     |
+| Archived          | `.trash/{name}/`            | `.trash/old-feature/`                |
+| WIP/Personal      | `.wip/` or `.{name}/`       | `.wip/experimental.ts`               |
 
 **Case:** kebab-case for files, PascalCase for exports.
 
@@ -184,27 +287,27 @@ export const Temp = rule(...);
 
 ### Rule Name Guidelines
 
-| Scenario | Naming Pattern | Example |
-|----------|----------------|---------|
-| Resource detail | `{Resource}Detail` | `UserDetail`, `OrderDetail` |
-| Create action | `Create{Resource}` | `CreateUser`, `CreateOrder` |
-| List/query | `List{Resource}s` | `ListUsers`, `ListProducts` |
-| Update action | `Update{Resource}` | `UpdateUser`, `UpdateSettings` |
-| Delete action | `Delete{Resource}` | `DeleteUser`, `DeleteOrder` |
-| Auth-related | `{Action}Auth` | `LoginAuth`, `RefreshToken` |
-| Error simulation | `Simulate{Error}` | `Simulate404`, `SimulateTimeout` |
+| Scenario         | Naming Pattern     | Example                          |
+| ---------------- | ------------------ | -------------------------------- |
+| Resource detail  | `{Resource}Detail` | `UserDetail`, `OrderDetail`      |
+| Create action    | `Create{Resource}` | `CreateUser`, `CreateOrder`      |
+| List/query       | `List{Resource}s`  | `ListUsers`, `ListProducts`      |
+| Update action    | `Update{Resource}` | `UpdateUser`, `UpdateSettings`   |
+| Delete action    | `Delete{Resource}` | `DeleteUser`, `DeleteOrder`      |
+| Auth-related     | `{Action}Auth`     | `LoginAuth`, `RefreshToken`      |
+| Error simulation | `Simulate{Error}`  | `Simulate404`, `SimulateTimeout` |
 
 ---
 
 ### Folder Naming
 
-| Purpose | Pattern | Example |
-|---------|---------|---------|
-| Feature domain | lowercase, kebab-case | `user-management/`, `order-processing/` |
-| Environment | lowercase | `dev/`, `staging/`, `demo/` |
-| Disabled | `.{name}/` | `.old-feature/`, `.experimental/` |
-| Archive | `.trash/{name}/` | `.trash/2024-q1/` |
-| Personal | `.{initials}/` or `.wip/` | `.john/`, `.wip/` |
+| Purpose        | Pattern                   | Example                                 |
+| -------------- | ------------------------- | --------------------------------------- |
+| Feature domain | lowercase, kebab-case     | `user-management/`, `order-processing/` |
+| Environment    | lowercase                 | `dev/`, `staging/`, `demo/`             |
+| Disabled       | `.{name}/`                | `.old-feature/`, `.experimental/`       |
+| Archive        | `.trash/{name}/`          | `.trash/2024-q1/`                       |
+| Personal       | `.{initials}/` or `.wip/` | `.john/`, `.wip/`                       |
 
 ---
 
@@ -212,10 +315,10 @@ export const Temp = rule(...);
 
 Two ways to disable rules:
 
-| Method | Scope | File Import | Log Display | Use Case |
-|--------|-------|-------------|-------------|----------|
-| `enabled: false` | Single rule | ✅ Yes | Shows "(off)" | Quick toggle, debugging |
-| Dot-prefix folder | Entire group | ❌ No | Not listed | Archive, experiments |
+| Method            | Scope        | File Import | Log Display   | Use Case                |
+| ----------------- | ------------ | ----------- | ------------- | ----------------------- |
+| `enabled: false`  | Single rule  | ✅ Yes      | Shows "(off)" | Quick toggle, debugging |
+| Dot-prefix folder | Entire group | ❌ No       | Not listed    | Archive, experiments    |
 
 **Example:**
 
@@ -253,7 +356,7 @@ export const AllUsers = rule({
 
 // Specific rule never gets hit!
 export const SpecialUser = rule({
-  path: '/api/users/999',
+  path: "/api/users/999",
   handler: (req, res) => res.json({ special: true }),
 });
 ```
@@ -263,7 +366,7 @@ export const SpecialUser = rule({
 ```typescript
 // Specific first
 export const SpecialUser = rule({
-  path: '/api/users/999',
+  path: "/api/users/999",
   handler: (req, res) => res.json({ special: true }),
 });
 
@@ -289,7 +392,7 @@ rules/
 ❌ **Problem:**
 
 ```typescript
-export const Slow = rule('GET', '/api/slow', (req, res) => {
+export const Slow = rule("GET", "/api/slow", (req, res) => {
   // This doesn't work! Handler returns immediately
   setTimeout(() => res.json({ done: true }), 1000);
 });
@@ -298,8 +401,8 @@ export const Slow = rule('GET', '/api/slow', (req, res) => {
 ✅ **Solution:** Use `async` and `await` with Promise.
 
 ```typescript
-export const Slow = rule('GET', '/api/slow', async (req, res) => {
-  await new Promise(resolve => setTimeout(resolve, 1000));
+export const Slow = rule("GET", "/api/slow", async (req, res) => {
+  await new Promise((resolve) => setTimeout(resolve, 1000));
   res.json({ done: true });
 });
 ```
@@ -313,7 +416,7 @@ export const Slow = rule('GET', '/api/slow', async (req, res) => {
 ```typescript
 export const Broken = rule({
   test: (req) => {
-    console.log('Checking request...');
+    console.log("Checking request...");
     // Forgot to return boolean!
   },
   handler: (req, res) => res.json({ ok: true }),
@@ -327,8 +430,8 @@ export const Broken = rule({
 ```typescript
 export const Fixed = rule({
   test: (req) => {
-    console.log('Checking request...');
-    return req.path === '/api/data'; // Explicit return
+    console.log("Checking request...");
+    return req.path === "/api/data"; // Explicit return
   },
   handler: (req, res) => res.json({ ok: true }),
 });
@@ -369,10 +472,14 @@ export const MultiMethod = rule(['GET', 'POST'], '/api/data', ...);
 ❌ **Problem:**
 
 ```typescript
-// Global state grows indefinitely
-const requestLog: any[] = [];
+interface RequestLogEntry {
+  timestamp: number;
+  path: string;
+}
 
-export const LogRequests = rule('GET', '/api/data', (req, res) => {
+const requestLog: RequestLogEntry[] = [];
+
+export const LogRequests = rule("GET", "/api/data", (req, res) => {
   requestLog.push({ timestamp: Date.now(), path: req.path });
   res.json({ totalRequests: requestLog.length });
 });
@@ -384,9 +491,9 @@ export const LogRequests = rule('GET', '/api/data', (req, res) => {
 
 ```typescript
 const MAX_LOG_SIZE = 1000;
-const requestLog: any[] = [];
+const requestLog: RequestLogEntry[] = [];
 
-export const LogRequests = rule('GET', '/api/data', (req, res) => {
+export const LogRequests = rule("GET", "/api/data", (req, res) => {
   requestLog.push({ timestamp: Date.now(), path: req.path });
 
   // Keep only last N entries
@@ -429,8 +536,8 @@ export const Query = rule({
 ❌ **Problem:**
 
 ```typescript
-export const Fetch = rule('GET', '/api/data', async (req, res) => {
-  const data = await fetch('https://upstream.com/data'); // Might throw!
+export const Fetch = rule("GET", "/api/data", async (req, res) => {
+  const data = await fetch("https://upstream.com/data"); // Might throw!
   const json = await data.json();
   res.json(json);
 });
@@ -441,14 +548,14 @@ export const Fetch = rule('GET', '/api/data', async (req, res) => {
 ✅ **Solution:** Wrap in try-catch.
 
 ```typescript
-export const Fetch = rule('GET', '/api/data', async (req, res) => {
+export const Fetch = rule("GET", "/api/data", async (req, res) => {
   try {
-    const data = await fetch('https://upstream.com/data');
+    const data = await fetch("https://upstream.com/data");
     const json = await data.json();
     res.json(json);
   } catch (err) {
-    console.error('Fetch error:', err);
-    res.status(500).json({ error: 'fetch_failed', detail: String(err) });
+    console.error("Fetch error:", err);
+    res.status(500).json({ error: "fetch_failed", detail: String(err) });
   }
 });
 ```
@@ -484,6 +591,7 @@ export const MyRule = rule(...);  // File not imported!
 ```
 
 ✅ **Solution:**
+
 - Use `enabled: false` for temporary single rule toggle
 - Use dot-prefix folder for disabling entire feature sets
 - Check server startup logs to verify rule state
@@ -559,28 +667,28 @@ pnpm add -D vitest supertest @types/supertest
 **Test file: `tests/rules.test.ts`:**
 
 ```typescript
-import { describe, it, expect } from 'vitest';
-import request from 'supertest';
-import { app } from '../main.js';
+import { describe, it, expect } from "vitest";
+import request from "supertest";
+import { app } from "../main.js";
 
-describe('Override Rules', () => {
-  it('should return demo hello', async () => {
-    const res = await request(app).get('/__demo/hello');
+describe("Override Rules", () => {
+  it("should return demo hello", async () => {
+    const res = await request(app).get("/__demo/hello");
     expect(res.status).toBe(200);
-    expect(res.body).toHaveProperty('message', 'hello');
+    expect(res.body).toHaveProperty("message", "hello");
   });
 
-  it('should require auth for /api/auth/me', async () => {
-    const res = await request(app).get('/api/auth/me');
+  it("should require auth for /api/auth/me", async () => {
+    const res = await request(app).get("/api/auth/me");
     expect(res.status).toBe(401);
   });
 
-  it('should accept valid token', async () => {
+  it("should accept valid token", async () => {
     const res = await request(app)
-      .get('/api/auth/me')
-      .set('Authorization', 'Bearer valid-token-123');
+      .get("/api/auth/me")
+      .set("Authorization", "Bearer valid-token-123");
     expect(res.status).toBe(200);
-    expect(res.body).toHaveProperty('email');
+    expect(res.body).toHaveProperty("email");
   });
 });
 ```
@@ -609,14 +717,14 @@ pnpm test
 
 ```typescript
 // tests/contract.test.ts
-import { describe, it, expect } from 'vitest';
-import request from 'supertest';
-import { app } from '../main.js';
+import { describe, it, expect } from "vitest";
+import request from "supertest";
+import { app } from "../main.js";
 
-describe('API Contract', () => {
-  it('should match upstream response shape', async () => {
+describe("API Contract", () => {
+  it("should match upstream response shape", async () => {
     // Get override response
-    const override = await request(app).get('/api/users/1');
+    const override = await request(app).get("/api/users/1");
 
     // Expected shape (from API docs)
     expect(override.body).toMatchObject({
@@ -652,7 +760,7 @@ jobs:
 
       - run: pnpm install
       - run: pnpm test
-      - run: npx tsc --noEmit  # Type check
+      - run: npx tsc --noEmit # Type check
 ```
 
 ---
@@ -710,9 +818,9 @@ export const User = rule('GET', '/api/users/123', ...);  // Exact match
 
 ```typescript
 // Loads 10MB of data at startup
-import largeDataset from './_data/huge.json';
+import largeDataset from "./_data/huge.json";
 
-export const Data = rule('GET', '/api/data', (req, res) => {
+export const Data = rule("GET", "/api/data", (req, res) => {
   res.json(largeDataset);
 });
 ```
@@ -720,13 +828,13 @@ export const Data = rule('GET', '/api/data', (req, res) => {
 ✅ **Better:**
 
 ```typescript
-let cachedData: any = null;
+let cachedData: unknown = null;
 
-export const Data = rule('GET', '/api/data', async (req, res) => {
+export const Data = rule("GET", "/api/data", async (req, res) => {
   if (!cachedData) {
     // Load on first request
-    const fs = await import('fs-extra');
-    cachedData = await fs.readJson('./_data/huge.json');
+    const fs = await import("fs-extra");
+    cachedData = await fs.readJson("./_data/huge.json");
   }
   res.json(cachedData);
 });
@@ -739,7 +847,7 @@ export const Data = rule('GET', '/api/data', async (req, res) => {
 ❌ **Avoid:**
 
 ```typescript
-export const Heavy = rule('GET', '/api/compute', (req, res) => {
+export const Heavy = rule("GET", "/api/compute", (req, res) => {
   // Expensive computation on every request
   const result = Array.from({ length: 1000000 })
     .map((_, i) => i * i)
@@ -757,7 +865,7 @@ const PRECOMPUTED = Array.from({ length: 1000000 })
   .map((_, i) => i * i)
   .reduce((a, b) => a + b, 0);
 
-export const Heavy = rule('GET', '/api/compute', (req, res) => {
+export const Heavy = rule("GET", "/api/compute", (req, res) => {
   res.json({ result: PRECOMPUTED });
 });
 ```
@@ -768,14 +876,14 @@ export const Heavy = rule('GET', '/api/compute', (req, res) => {
 
 ```typescript
 interface CacheEntry {
-  data: any;
+  data: unknown;
   timestamp: number;
 }
 
 const cache = new Map<string, CacheEntry>();
 const CACHE_TTL = 60000; // 60 seconds
 
-export const Cached = rule('GET', '/api/expensive', async (req, res) => {
+export const Cached = rule("GET", "/api/expensive", async (req, res) => {
   const cacheKey = req.originalUrl;
   const now = Date.now();
 
@@ -786,7 +894,7 @@ export const Cached = rule('GET', '/api/expensive', async (req, res) => {
   }
 
   // Compute expensive result
-  await new Promise(resolve => setTimeout(resolve, 1000));
+  await new Promise((resolve) => setTimeout(resolve, 1000));
   const data = { result: Math.random(), timestamp: now };
 
   // Store in cache
@@ -838,7 +946,7 @@ rules/.*/
  * Created: 2025-01-15
  */
 export const UserDetail = rule({
-  methods: ['GET'],
+  methods: ["GET"],
   path: /^\/api\/users\/(\d+)$/,
   handler: (req, res) => {
     // Implementation...
@@ -871,11 +979,13 @@ export const UserDetail = rule({
 # Rules Changelog
 
 ## 2025-01-15
+
 - Added `UserDetail` rule for `/api/users/:id`
 - Fixed `AuthToken` rule to handle expired tokens
 - Archived `old-commerce/` rules to `.trash/2025-q1/`
 
 ## 2025-01-10
+
 - Refactored `auth/` rules to use shared `_helpers/auth.ts`
 ```
 
@@ -886,6 +996,7 @@ export const UserDetail = rule({
 ### Pattern 1: What to Commit
 
 ✅ **Commit:**
+
 - Rule files (`.ts`, `.js`)
 - Shared helpers (`_helpers/`)
 - Test data (`_data/`)
@@ -893,6 +1004,7 @@ export const UserDetail = rule({
 - `.env.default` (non-sensitive defaults)
 
 ❌ **Don't commit:**
+
 - `.env.local` (secrets)
 - Personal rules (`.personal/`, `.wip/`)
 - Large binary files
@@ -975,20 +1087,20 @@ wip
 
 ```typescript
 // Duplicated auth logic
-export const Route1 = rule('GET', '/api/a', (req, res) => {
-  const token = req.headers.authorization?.replace('Bearer ', '');
-  if (!token || token !== 'valid') {
-    return res.status(401).json({ error: 'unauthorized' });
+export const Route1 = rule("GET", "/api/a", (req, res) => {
+  const token = req.headers.authorization?.replace("Bearer ", "");
+  if (!token || token !== "valid") {
+    return res.status(401).json({ error: "unauthorized" });
   }
-  res.json({ data: 'A' });
+  res.json({ data: "A" });
 });
 
-export const Route2 = rule('GET', '/api/b', (req, res) => {
-  const token = req.headers.authorization?.replace('Bearer ', '');
-  if (!token || token !== 'valid') {
-    return res.status(401).json({ error: 'unauthorized' });
+export const Route2 = rule("GET", "/api/b", (req, res) => {
+  const token = req.headers.authorization?.replace("Bearer ", "");
+  if (!token || token !== "valid") {
+    return res.status(401).json({ error: "unauthorized" });
   }
-  res.json({ data: 'B' });
+  res.json({ data: "B" });
 });
 ```
 
@@ -997,25 +1109,25 @@ export const Route2 = rule('GET', '/api/b', (req, res) => {
 ```typescript
 // rules/_helpers/auth.ts
 export function requireAuth(req: Request, res: Response): boolean {
-  const token = req.headers.authorization?.replace('Bearer ', '');
-  if (!token || token !== 'valid') {
-    res.status(401).json({ error: 'unauthorized' });
+  const token = req.headers.authorization?.replace("Bearer ", "");
+  if (!token || token !== "valid") {
+    res.status(401).json({ error: "unauthorized" });
     return false;
   }
   return true;
 }
 
 // rules/routes.ts
-import { requireAuth } from './_helpers/auth.js';
+import { requireAuth } from "./_helpers/auth.js";
 
-export const Route1 = rule('GET', '/api/a', (req, res) => {
+export const Route1 = rule("GET", "/api/a", (req, res) => {
   if (!requireAuth(req, res)) return;
-  res.json({ data: 'A' });
+  res.json({ data: "A" });
 });
 
-export const Route2 = rule('GET', '/api/b', (req, res) => {
+export const Route2 = rule("GET", "/api/b", (req, res) => {
   if (!requireAuth(req, res)) return;
-  res.json({ data: 'B' });
+  res.json({ data: "B" });
 });
 ```
 
@@ -1075,20 +1187,20 @@ export const UserDetail = rule({
 ✅ **Good:**
 
 ```typescript
-export const CreateUser = rule('POST', '/api/users', (req, res) => {
+export const CreateUser = rule("POST", "/api/users", (req, res) => {
   const { name, email, age } = req.body || {};
 
   // Validate inputs
-  if (!name || typeof name !== 'string' || name.length > 100) {
-    return res.status(400).json({ error: 'invalid_name' });
+  if (!name || typeof name !== "string" || name.length > 100) {
+    return res.status(400).json({ error: "invalid_name" });
   }
 
-  if (!email || !email.includes('@')) {
-    return res.status(400).json({ error: 'invalid_email' });
+  if (!email || !email.includes("@")) {
+    return res.status(400).json({ error: "invalid_email" });
   }
 
-  if (age && (typeof age !== 'number' || age < 0 || age > 150)) {
-    return res.status(400).json({ error: 'invalid_age' });
+  if (age && (typeof age !== "number" || age < 0 || age > 150)) {
+    return res.status(400).json({ error: "invalid_age" });
   }
 
   // Process valid input
@@ -1104,11 +1216,12 @@ export const CreateUser = rule('POST', '/api/users', (req, res) => {
 
 ```typescript
 // Hardcoded secret
-export const Auth = rule('POST', '/api/login', (req, res) => {
-  if (req.body.password === 'my-secret-password-123') {  // BAD!
-    return res.json({ token: 'valid' });
+export const Auth = rule("POST", "/api/login", (req, res) => {
+  if (req.body.password === "my-secret-password-123") {
+    // BAD!
+    return res.json({ token: "valid" });
   }
-  res.status(401).json({ error: 'unauthorized' });
+  res.status(401).json({ error: "unauthorized" });
 });
 ```
 
@@ -1116,13 +1229,13 @@ export const Auth = rule('POST', '/api/login', (req, res) => {
 
 ```typescript
 // Use environment variable
-const VALID_PASSWORD = process.env['TEST_PASSWORD'] || 'default-test-pass';
+const VALID_PASSWORD = process.env["TEST_PASSWORD"] || "default-test-pass";
 
-export const Auth = rule('POST', '/api/login', (req, res) => {
+export const Auth = rule("POST", "/api/login", (req, res) => {
   if (req.body.password === VALID_PASSWORD) {
-    return res.json({ token: 'valid' });
+    return res.json({ token: "valid" });
   }
-  res.status(401).json({ error: 'unauthorized' });
+  res.status(401).json({ error: "unauthorized" });
 });
 ```
 
@@ -1151,8 +1264,8 @@ CORS_ORIGINS=http://localhost:3000,https://dev.example.com
 ```typescript
 const requestCounts = new Map<string, { count: number; resetAt: number }>();
 
-export const RateLimited = rule('GET', '/api/limited', (req, res) => {
-  const ip = req.ip || 'unknown';
+export const RateLimited = rule("GET", "/api/limited", (req, res) => {
+  const ip = req.ip || "unknown";
   const now = Date.now();
   const limit = 10;
   const windowMs = 60000; // 1 minute
@@ -1168,7 +1281,7 @@ export const RateLimited = rule('GET', '/api/limited', (req, res) => {
 
   if (record.count > limit) {
     return res.status(429).json({
-      error: 'rate_limit_exceeded',
+      error: "rate_limit_exceeded",
       retryAfter: Math.ceil((record.resetAt - now) / 1000),
     });
   }
@@ -1187,15 +1300,12 @@ export const RateLimited = rule('GET', '/api/limited', (req, res) => {
 
 ```typescript
 // src/mocks/handlers.ts
-import { rest } from 'msw';
+import { rest } from "msw";
 
 export const handlers = [
-  rest.get('/api/users/:id', (req, res, ctx) => {
+  rest.get("/api/users/:id", (req, res, ctx) => {
     const { id } = req.params;
-    return res(
-      ctx.status(200),
-      ctx.json({ id, name: `User ${id}` })
-    );
+    return res(ctx.status(200), ctx.json({ id, name: `User ${id}` }));
   }),
 ];
 ```
@@ -1204,20 +1314,21 @@ export const handlers = [
 
 ```typescript
 // rules/users.ts
-import { rule } from '../utils.js';
+import { rule } from "../utils.js";
 
 export const UserDetail = rule({
-  methods: ['GET'],
+  methods: ["GET"],
   path: /^\/api\/users\/(\d+)$/,
   handler: (req, res) => {
     const match = req.path.match(/^\/api\/users\/(\d+)$/);
-    const id = match ? match[1] : 'unknown';
+    const id = match ? match[1] : "unknown";
     res.status(200).json({ id, name: `User ${id}` });
   },
 });
 ```
 
 **Migration steps:**
+
 1. Copy MSW handlers one-by-one to `rules/`
 2. Convert `rest.get/post/...` to `rule(method, path, handler)`
 3. Convert `req.params` to regex captures or `req.query`
@@ -1285,4 +1396,3 @@ export const UserDetail = rule({
 4. [ ] Is caching used for heavy computations?
 5. [ ] Is data loading lazy (not at startup)?
 6. [ ] Are stateful rules bounded (no memory leaks)?
-

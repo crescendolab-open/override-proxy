@@ -1,21 +1,17 @@
-// Shared type declarations for override-proxy
-// HTTP method (standard verbs). Always UPPERCASE.
 export type Method =
-  | 'GET'
-  | 'POST'
-  | 'PUT'
-  | 'PATCH'
-  | 'DELETE'
-  | 'HEAD'
-  | 'OPTIONS';
-  // (Add 'TRACE' if ever needed)
+  | "GET"
+  | "POST"
+  | "PUT"
+  | "PATCH"
+  | "DELETE"
+  | "HEAD"
+  | "OPTIONS";
 
-// Non-empty HTTP methods list. Tuple ensures at least one.
 export type MethodList = [Method, ...Method[]];
 
-export type RuleTest = (req: import('express').Request) => boolean;
+export type RuleTest = (req: import("express").Request) => boolean;
 export type RuleHandler = (
-  req: import('express').Request,
-  res: import('express').Response,
-  next: import('express').NextFunction,
+  req: import("express").Request,
+  res: import("express").Response,
+  next: import("express").NextFunction,
 ) => void | Promise<void>;

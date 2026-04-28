@@ -7,7 +7,7 @@
  *
  * When --rules-dir=<path> is provided, this script adds `--watch <path>` to
  * the nodemon invocation so external rule files trigger a hot reload.
- * All arguments are forwarded to the underlying `tsx main.ts` command.
+ * All arguments are forwarded to the underlying `tsx cli.ts serve` command.
  */
 
 import { execFileSync } from "node:child_process";
@@ -49,7 +49,7 @@ if (needsOverride) {
 
   // Forward args to the exec command (override --exec to append them).
   if (args.length > 0) {
-    const exec = config.exec ?? "tsx main.ts";
+    const exec = config.exec ?? "tsx cli.ts serve";
     const quote = (a) => (a.includes(" ") ? `"${a}"` : a);
     nodemonArgs.push("--exec", `${exec} ${args.map(quote).join(" ")}`);
   }
