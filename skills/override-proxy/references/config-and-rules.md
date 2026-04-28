@@ -167,12 +167,14 @@ Use the object form for names, multiple methods, disabled rules, custom tests, o
 ```ts
 import { rule } from "@crescendolab/override-proxy";
 
+const UserPath = /^\/api\/users\/(\d+)$/;
+
 export const UserDetail = rule({
   name: "user-detail",
   methods: ["GET"],
-  path: /^\/api\/users\/(\d+)$/,
+  path: UserPath,
   handler: (req, res) => {
-    const match = /^\/api\/users\/(\d+)$/.exec(req.path);
+    const match = UserPath.exec(req.path);
     if (!match) {
       res.status(404).json({ error: "not_found" });
       return;
