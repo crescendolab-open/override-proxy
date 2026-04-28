@@ -213,11 +213,12 @@ Without rewrite, `/api/users` is proxied as `/api/users`.
 
 ### Pattern 9: Choose the Cheapest WebSocket Mode
 
-| Need                          | Mode     |
-| ----------------------------- | -------- |
-| Forward traffic unchanged     | `direct` |
-| Inspect or mutate messages    | `bridge` |
-| Emit local mock messages only | `mock`   |
+| Need                          | Mode               |
+| ----------------------------- | ------------------ |
+| Forward traffic unchanged     | `direct`           |
+| Inspect or mutate messages    | `bridge`           |
+| Emit local mock messages only | `mock`             |
+| Send welcome or heartbeat     | `bridge` or `mock` |
 
 Start with `direct` when no message-level behavior is needed. Use `bridge` only when rules need `raw`, `text`, `json`, or `jsonObject`.
 
@@ -235,7 +236,31 @@ ctx.emitToClient({
 return ctx.forward();
 ```
 
-### Pattern 11: Keep Socket.IO Separate
+### Pattern 11: Use Connection Rules For Server Push
+
+Use `wsConnectionRule()` when the proxy should send messages without waiting for a client or upstream message. Prefer `ctx.every()` to manual timers so the runtime can clean up on close.
+
+```typescript
+export const Heartbeat = wsConnectionRule({
+  onConnect: (ctx) => {
+    ctx.client.send({ type: "proxy:ready" });
+    ctx.every(30_000, () => ctx.client.send({ type: "proxy:ping" }));
+  },
+});
+```
+
+Connection rules can also seed an upstream socket:
+
+```typescript
+export const StartSession = wsConnectionRule({
+  test: (ctx) => ctx.upstream !== null,
+  onConnect: (ctx) => {
+    ctx.upstream?.send({ type: "session:start" });
+  },
+});
+```
+
+### Pattern 12: Keep Socket.IO Separate
 
 Socket.IO is not plain WebSocket messaging. It adds its own handshake, framing, heartbeat, event names, and acknowledgements. A raw `wsRule()` can forward Socket.IO bytes, but it should not be expected to understand Socket.IO events.
 

@@ -227,7 +227,7 @@ Route config supports three modes:
 | `bridge` | Accept client socket, optionally connect upstream, and run message rules |
 | `mock`   | Accept client socket without opening an upstream connection              |
 
-Bridge and mock rules use `wsRule()`:
+Bridge and mock message rules use `wsRule()`:
 
 ```ts
 import { wsRule } from "../../utils.js";
@@ -246,6 +246,24 @@ export const PatchChatMessage = wsRule({
 ```
 
 Each message context includes `raw`, `text`, `json`, `jsonObject`, `direction`, route metadata, request headers, and action helpers. Supported actions are `forward`, `skip`, `emitToClient`, `emitToUpstream`, `close`, and `fail`.
+
+Use `wsConnectionRule()` when the proxy should send messages without waiting for client or upstream traffic, such as welcome events, heartbeat pings, or server-push mocks:
+
+```ts
+import { wsConnectionRule } from "../../utils.js";
+
+export const Heartbeat = wsConnectionRule({
+  onConnect: (ctx) => {
+    ctx.client.send({ type: "proxy:ready" });
+
+    ctx.every(30_000, () => {
+      ctx.client.send({ type: "proxy:ping", at: Date.now() });
+    });
+  },
+});
+```
+
+The connection context exposes typed `client` and optional `upstream` peers with `send`, `close`, and `readyState`. Advanced rules can use `ctx.raw.client` / `ctx.raw.upstream` for the underlying `ws` sockets. Timers registered with `ctx.every()` and disposers returned from `onConnect()` are cleaned up when the connection closes.
 
 ## Examples
 

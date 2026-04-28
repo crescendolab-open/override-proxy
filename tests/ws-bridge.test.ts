@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import type { Server } from "node:http";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import type { AddressInfo } from "node:net";
 import getPort, { portNumbers } from "get-port";
@@ -20,6 +20,9 @@ const tempDir = await mkdtemp(join(tmpdir(), "override-proxy-ws-bridge-"));
 const bridgeRulesDir = join(tempDir, "bridge");
 const skipRulesDir = join(tempDir, "skip");
 const mockRulesDir = join(tempDir, "mock");
+const connectionRulesDir = join(tempDir, "connection");
+const upstreamConnectionRulesDir = join(tempDir, "upstream-connection");
+const cleanupFile = join(tempDir, "cleanup.txt");
 const upstream = await startBridgeUpstream();
 
 try {
@@ -45,6 +48,16 @@ try {
           ]),
           route("skip", "/ws/skip", "bridge", upstream.url, [skipRulesDir]),
           route("mock", "/ws/mock", "mock", null, [mockRulesDir]),
+          route("connect-mock", "/ws/connect-mock", "mock", null, [
+            connectionRulesDir,
+          ]),
+          route(
+            "connect-upstream",
+            "/ws/connect-upstream",
+            "bridge",
+            upstream.url,
+            [upstreamConnectionRulesDir],
+          ),
           route("binary", "/ws/binary", "bridge", upstream.url, []),
           route(
             "upstream-fail",
@@ -65,6 +78,8 @@ try {
     await assertBridgeMutatesBothDirections(baseUrl);
     await assertSkipAndEmit(baseUrl);
     await assertMockOnlyAndInvalidJson(baseUrl);
+    await assertConnectionRuleEmitsWithoutClientMessage(baseUrl);
+    await assertConnectionRuleCanSendToConnectingUpstream(baseUrl);
     await assertBinaryPassthrough(baseUrl);
     await assertUpstreamFailureClosesClient(baseUrl);
   } finally {
@@ -81,6 +96,8 @@ async function writeRules(): Promise<void> {
   await mkdir(bridgeRulesDir, { recursive: true });
   await mkdir(skipRulesDir, { recursive: true });
   await mkdir(mockRulesDir, { recursive: true });
+  await mkdir(connectionRulesDir, { recursive: true });
+  await mkdir(upstreamConnectionRulesDir, { recursive: true });
 
   await writeFile(
     join(bridgeRulesDir, "bridge.js"),
@@ -122,6 +139,42 @@ export const MockInvalidJson = {
   handler: (ctx) => {
     ctx.emitToClient({ type: "proxy:invalid-json", raw: ctx.text });
     return ctx.skip();
+  },
+};
+`,
+  );
+
+  await writeFile(
+    join(connectionRulesDir, "connection.js"),
+    `
+import { writeFile } from "node:fs/promises";
+
+export const WelcomeAndHeartbeat = {
+  enabled: true,
+  test: () => true,
+  onConnect: (ctx) => {
+    ctx.client.send({
+      type: "proxy:welcome",
+      path: ctx.path,
+      readyState: ctx.client.readyState,
+    });
+    ctx.every(20, () => {
+      ctx.client.send({ type: "proxy:tick" });
+    });
+    return () => writeFile(${JSON.stringify(cleanupFile)}, "cleaned");
+  },
+};
+`,
+  );
+
+  await writeFile(
+    join(upstreamConnectionRulesDir, "upstream.js"),
+    `
+export const SendToUpstreamOnConnect = {
+  enabled: true,
+  test: (ctx) => ctx.upstream !== null,
+  onConnect: (ctx) => {
+    ctx.upstream?.send({ type: "proxy:connect-upstream" });
   },
 };
 `,
@@ -201,6 +254,59 @@ async function assertMockOnlyAndInvalidJson(baseUrl: string): Promise<void> {
       type: "proxy:invalid-json",
       raw: "not-json",
     });
+  } finally {
+    await closeSocket(client);
+  }
+}
+
+async function assertConnectionRuleEmitsWithoutClientMessage(
+  baseUrl: string,
+): Promise<void> {
+  const client = new WebSocket(`${baseUrl}/ws/connect-mock`);
+  const messages: string[] = [];
+  client.on("message", (data) => {
+    messages.push(rawDataToBuffer(data).toString("utf8"));
+  });
+
+  try {
+    await waitOpen(client);
+    await waitForMessageCount(messages, 2);
+
+    const welcome = messages.map(parseJsonObject).find((message) => {
+      return message["type"] === "proxy:welcome";
+    });
+    const tick = messages.map(parseJsonObject).find((message) => {
+      return message["type"] === "proxy:tick";
+    });
+
+    assert.ok(welcome);
+    assert.deepEqual(welcome, {
+      type: "proxy:welcome",
+      path: "/ws/connect-mock",
+      readyState: "open",
+    });
+    assert.ok(tick);
+  } finally {
+    await closeSocket(client);
+  }
+
+  await waitForFileContent(cleanupFile, "cleaned");
+}
+
+async function assertConnectionRuleCanSendToConnectingUpstream(
+  baseUrl: string,
+): Promise<void> {
+  const messageCount = upstream.messages.length;
+  const client = await openSocket(`${baseUrl}/ws/connect-upstream`);
+  try {
+    const reply = await nextTextMessage(client);
+    assert.equal(reply, 'echo:{"type":"proxy:connect-upstream"}');
+
+    const message = upstream.messages
+      .slice(messageCount)
+      .find((item) => item.path === "/ws/connect-upstream");
+    assert.ok(message);
+    assert.equal(message.text, '{"type":"proxy:connect-upstream"}');
   } finally {
     await closeSocket(client);
   }
@@ -372,6 +478,38 @@ async function closeUpstream(server: WebSocketServer): Promise<void> {
       if (error) reject(error);
       else resolve();
     });
+  });
+}
+
+async function waitForFileContent(
+  filePath: string,
+  expected: string,
+): Promise<void> {
+  for (let attempt = 0; attempt < 20; attempt++) {
+    try {
+      if ((await readFile(filePath, "utf8")) === expected) return;
+    } catch {
+      // The disposer writes this file asynchronously after the socket closes.
+    }
+    await delay(25);
+  }
+  assert.fail(`Timed out waiting for ${filePath}`);
+}
+
+async function waitForMessageCount(
+  messages: readonly string[],
+  expected: number,
+): Promise<void> {
+  for (let attempt = 0; attempt < 20; attempt++) {
+    if (messages.length >= expected) return;
+    await delay(25);
+  }
+  assert.fail(`Timed out waiting for ${expected} WebSocket messages`);
+}
+
+async function delay(ms: number): Promise<void> {
+  await new Promise<void>((resolve) => {
+    setTimeout(resolve, ms);
   });
 }
 

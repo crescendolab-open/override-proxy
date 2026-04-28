@@ -12,8 +12,13 @@ import {
 } from "./logger.js";
 import { rewriteRoutePath } from "./route-matching.js";
 import type {
+  WsConnectionContext,
+  WsConnectionDisposer,
   WsMessageContext,
   WsMessageDirection,
+  WsPayload,
+  WsPeer,
+  WsPeerReadyState,
   WsRuleAction,
 } from "./utils.js";
 
@@ -30,7 +35,7 @@ export interface WebSocketBridgeUpgradeArgs {
   routeRuntime: HttpRouteRuntime;
 }
 
-type OutboundPayload = string | Buffer | object;
+type OutboundPayload = WsPayload;
 
 interface PendingMessage {
   data: WebSocket.Data;
@@ -97,12 +102,54 @@ function bridgeConnection({
   let clientQueue = Promise.resolve();
   let upstreamQueue = Promise.resolve();
   const pendingUpstream: PendingMessage[] = [];
+  const disposers = new Set<WsConnectionDisposer>();
+  let disposersClosed = false;
+
+  const runDisposer = (disposer: WsConnectionDisposer): void => {
+    try {
+      void Promise.resolve(disposer()).catch((error: unknown) => {
+        logError(id, error);
+      });
+    } catch (error) {
+      logError(id, error);
+    }
+  };
+
+  const registerDisposer = (
+    disposer: WsConnectionDisposer,
+  ): WsConnectionDisposer => {
+    let active = true;
+    const wrapped = (): void => {
+      if (!active) return;
+      active = false;
+      disposers.delete(wrapped);
+      runDisposer(disposer);
+    };
+
+    if (disposersClosed) {
+      wrapped();
+      return wrapped;
+    }
+
+    disposers.add(wrapped);
+    return wrapped;
+  };
+
+  const closeDisposers = (): void => {
+    if (disposersClosed) return;
+    disposersClosed = true;
+    for (const disposer of [...disposers]) {
+      disposer();
+    }
+    disposers.clear();
+  };
 
   const closeWithLog = (code: number, reason?: string): void => {
     const closeCode = normalizeCloseCode(code);
     const closeReason = normalizeCloseReason(reason);
     if (!closed) {
       closed = true;
+      closeDisposers();
       if (client.readyState === WebSocket.OPEN) {
         client.close(closeCode, closeReason);
       } else if (client.readyState === WebSocket.CONNECTING) {
@@ -153,6 +200,37 @@ function bridgeConnection({
       const message = pendingUpstream.shift();
       if (!message) continue;
       sendUpstream(message);
+    }
+  };
+
+  const runConnectionRules = async (): Promise<void> => {
+    const context = createConnectionContext({
+      id,
+      req,
+      pathname,
+      routeRuntime,
+      client,
+      upstream,
+      sendClient,
+      sendUpstream,
+      close: closeWithLog,
+      registerDisposer,
+    });
+
+    for (const rule of routeRuntime.wsConnectionRules) {
+      if (closed) return;
+      if (rule.enabled === false) continue;
+      if (!(await rule.test(context))) continue;
+
+      logWebSocketMatch(
+        id,
+        "connect",
+        rule.name || "websocket",
+        routeRuntime.wsConnectionMetaMap.get(rule),
+      );
+
+      const setup = await rule.onConnect(context);
+      if (setup) context.dispose(setup);
     }
   };
 
@@ -242,6 +320,11 @@ function bridgeConnection({
   } else {
     logWebSocketProxy(id, "<mock>");
   }
+
+  void runConnectionRules().catch((error: unknown) => {
+    logError(id, error);
+    closeWithLog(1011, "connection_rule_error");
+  });
 }
 
 interface RunRulesOptions {
@@ -351,6 +434,135 @@ function createMessageContext({
   };
 }
 
+interface CreateConnectionContextOptions {
+  id: number;
+  req: IncomingMessage;
+  pathname: string;
+  routeRuntime: HttpRouteRuntime;
+  client: WebSocket;
+  upstream: WebSocket | null;
+  sendClient(message: PendingMessage): void;
+  sendUpstream(message: PendingMessage): void;
+  close(code: number, reason?: string): void;
+  registerDisposer(disposer: WsConnectionDisposer): WsConnectionDisposer;
+}
+
+function createConnectionContext({
+  id,
+  req,
+  pathname,
+  routeRuntime,
+  client,
+  upstream,
+  sendClient,
+  sendUpstream,
+  close,
+  registerDisposer,
+}: CreateConnectionContextOptions): WsConnectionContext {
+  return {
+    serverName: routeRuntime.serverName,
+    routeName: routeRuntime.route.name,
+    connectionId: `ws:${id}`,
+    path: pathname,
+    headers: req.headers,
+    client: createPeer({
+      id,
+      socket: client,
+      send: sendClient,
+      action: "emit-client",
+    }),
+    upstream: upstream
+      ? createPeer({
+          id,
+          socket: upstream,
+          send: sendUpstream,
+          action: "emit-upstream",
+        })
+      : null,
+    raw: {
+      client,
+      upstream,
+    },
+    every: (intervalMs, callback) => {
+      if (!Number.isFinite(intervalMs) || intervalMs <= 0) {
+        throw new Error("ctx.every() requires an interval greater than 0ms");
+      }
+
+      const timer = setInterval(() => {
+        try {
+          void Promise.resolve(callback()).catch((error: unknown) => {
+            logError(id, error);
+          });
+        } catch (error) {
+          logError(id, error);
+        }
+      }, intervalMs);
+
+      return registerDisposer(() => {
+        clearInterval(timer);
+      });
+    },
+    dispose: (disposer) => {
+      registerDisposer(disposer);
+    },
+    close: (code, reason) => {
+      close(code ?? 1000, reason);
+    },
+  };
+}
+
+interface CreatePeerOptions {
+  id: number;
+  socket: WebSocket;
+  send(message: PendingMessage): void;
+  action: "emit-client" | "emit-upstream";
+}
+
+function createPeer({ id, socket, send, action }: CreatePeerOptions): WsPeer {
+  return {
+    get readyState() {
+      return toPeerReadyState(socket.readyState);
+    },
+    send: (payload) => {
+      const message = materializeOutboundPayload(payload);
+      send(message);
+      logWebSocketAction(id, "connect", action, message.bytes);
+    },
+    close: (code, reason) => {
+      closeSocket(socket, code, reason);
+    },
+  };
+}
+
+function closeSocket(
+  socket: WebSocket,
+  code: number | undefined,
+  reason: string | undefined,
+): void {
+  const closeCode = normalizeCloseCode(code ?? 1000);
+  const closeReason = normalizeCloseReason(reason);
+  if (socket.readyState === WebSocket.OPEN) {
+    socket.close(closeCode, closeReason);
+    return;
+  }
+  if (socket.readyState === WebSocket.CONNECTING) {
+    socket.terminate();
+  }
+}
+
+function toPeerReadyState(readyState: number): WsPeerReadyState {
+  switch (readyState) {
+    case WebSocket.CONNECTING:
+      return "connecting";
+    case WebSocket.OPEN:
+      return "open";
+    case WebSocket.CLOSING:
+      return "closing";
+    default:
+      return "closed";
+  }
+}
+
 interface ActionTargets {
   id: number;
   sendClient(message: PendingMessage): void;
@@ -446,6 +658,10 @@ function materializePayload(
       bytes: snapshot.raw.length,
     };
   }
+  return materializeOutboundPayload(payload);
+}
+
+function materializeOutboundPayload(payload: OutboundPayload): PendingMessage {
   if (Buffer.isBuffer(payload)) {
     return {
       data: payload,

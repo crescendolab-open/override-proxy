@@ -139,6 +139,17 @@ Goal: align rule file discovery with config file ESM extensions.
 - [x] Continue excluding declaration files and dotfiles.
 - [x] Add `.mjs` coverage for HTTP and WebSocket rule loading.
 
+## Phase 11: WebSocket Connection Rules
+
+Goal: let WebSocket rules send messages and manage timers without waiting for inbound traffic.
+
+- [x] Add `wsConnectionRule()` and connection context types.
+- [x] Expose typed `client` and optional `upstream` peers with `send`, `close`, and `readyState`.
+- [x] Expose `ctx.raw` for advanced access to the underlying `ws` sockets.
+- [x] Add `ctx.every()` and disposer cleanup on socket close.
+- [x] Queue connection-rule upstream sends while upstream is still connecting.
+- [x] Add integration tests for welcome messages, heartbeat intervals, disposer cleanup, and upstream sends.
+
 ## Next-Step Rule
 
 When the user asks for the next step:

@@ -1,5 +1,6 @@
 import type { Method, MethodList, RuleHandler, RuleTest } from "./types.js";
 import type { IncomingHttpHeaders } from "node:http";
+import type WebSocket from "ws";
 import { resolve } from "pathe";
 
 export interface OverrideRule {
@@ -17,6 +18,42 @@ export interface OverrideRuleMeta {
 }
 
 export type WsMessageDirection = "client" | "upstream";
+export type WsPayload = string | Buffer | object;
+export type WsPeerReadyState = "connecting" | "open" | "closing" | "closed";
+
+export interface WsPeer {
+  readyState: WsPeerReadyState;
+  send(payload: WsPayload): void;
+  close(code?: number, reason?: string): void;
+}
+
+export interface WsRawConnection {
+  client: WebSocket;
+  upstream: WebSocket | null;
+}
+
+export type WsConnectionDisposer = () => void | Promise<void>;
+export type WsConnectionSetup =
+  | void
+  | WsConnectionDisposer
+  | Promise<void | WsConnectionDisposer>;
+
+export interface WsConnectionContext {
+  serverName: string;
+  routeName: string;
+  connectionId: string;
+  path: string;
+  headers: IncomingHttpHeaders;
+  client: WsPeer;
+  upstream: WsPeer | null;
+  raw: WsRawConnection;
+  every(
+    intervalMs: number,
+    callback: () => void | Promise<void>,
+  ): WsConnectionDisposer;
+  dispose(disposer: WsConnectionDisposer): void;
+  close(code?: number, reason?: string): void;
+}
 
 export interface WsMessageContext {
   serverName: string;
@@ -29,19 +66,19 @@ export interface WsMessageContext {
   text: string | null;
   json: unknown | null;
   jsonObject: Record<string, unknown> | null;
-  forward(payload?: string | Buffer | object): WsRuleAction;
+  forward(payload?: WsPayload): WsRuleAction;
   skip(): WsRuleAction;
-  emitToClient(payload: string | Buffer | object): void;
-  emitToUpstream(payload: string | Buffer | object): void;
+  emitToClient(payload: WsPayload): void;
+  emitToUpstream(payload: WsPayload): void;
   close(code?: number, reason?: string): WsRuleAction;
   fail(error: string): WsRuleAction;
 }
 
 export type WsRuleAction =
-  | { type: "forward"; payload?: string | Buffer | object }
+  | { type: "forward"; payload?: WsPayload }
   | { type: "skip" }
-  | { type: "emitToClient"; payload: string | Buffer | object }
-  | { type: "emitToUpstream"; payload: string | Buffer | object }
+  | { type: "emitToClient"; payload: WsPayload }
+  | { type: "emitToUpstream"; payload: WsPayload }
   | { type: "close"; code?: number; reason?: string }
   | { type: "fail"; error: string };
 
@@ -57,6 +94,20 @@ export interface WsRuleConfig {
   enabled?: boolean;
   test?: (ctx: WsMessageContext) => boolean | Promise<boolean>;
   handler(ctx: WsMessageContext): WsRuleAction | Promise<WsRuleAction>;
+}
+
+export interface WebSocketConnectionRule {
+  name?: string;
+  enabled?: boolean;
+  test(ctx: WsConnectionContext): boolean | Promise<boolean>;
+  onConnect(ctx: WsConnectionContext): WsConnectionSetup;
+}
+
+export interface WsConnectionRuleConfig {
+  name?: string;
+  enabled?: boolean;
+  test?: (ctx: WsConnectionContext) => boolean | Promise<boolean>;
+  onConnect(ctx: WsConnectionContext): WsConnectionSetup;
 }
 
 export interface RuleConfig {
@@ -223,6 +274,18 @@ export function wsRule(config: WsRuleConfig): WebSocketRule {
   };
 }
 
+export function wsConnectionRule(
+  config: WsConnectionRuleConfig,
+): WebSocketConnectionRule {
+  const enabled = config.enabled !== false;
+  return {
+    ...(config.name ? { name: config.name } : {}),
+    enabled,
+    test: async (ctx) => enabled && (config.test ? config.test(ctx) : true),
+    onConnect: config.onConnect,
+  };
+}
+
 export type RulesModule =
   | { default?: OverrideRule | OverrideRule[]; rules?: OverrideRule[] }
   | OverrideRule
@@ -253,6 +316,16 @@ export function isWebSocketRule(obj: unknown): obj is WebSocketRule {
     typeof obj["test"] === "function" &&
     typeof obj["handler"] === "function" &&
     !Array.isArray(obj["methods"])
+  );
+}
+
+export function isWebSocketConnectionRule(
+  obj: unknown,
+): obj is WebSocketConnectionRule {
+  return (
+    isRecord(obj) &&
+    typeof obj["test"] === "function" &&
+    typeof obj["onConnect"] === "function"
   );
 }
 

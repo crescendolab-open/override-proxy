@@ -56,6 +56,7 @@ Package API exports:
 - `defineConfig`
 - `rule`
 - `wsRule`
+- `wsConnectionRule`
 - public config and rule types
 
 Legacy runtime exports preserved from `main.ts` and the package `./main` subpath:
@@ -174,6 +175,21 @@ export const PatchMessage = wsRule({
 ```
 
 Supported actions: `forward`, `skip`, `emitToClient`, `emitToUpstream`, `close`, and `fail`. Bridge mode can mutate both client-to-upstream and upstream-to-client messages. Mock mode accepts client sockets without an upstream target. This is raw WebSocket support, not Socket.IO.
+
+Use `wsConnectionRule()` for connection-level behavior that must run before any message arrives:
+
+```ts
+import { wsConnectionRule } from "../utils.js";
+
+export const Heartbeat = wsConnectionRule({
+  onConnect: (ctx) => {
+    ctx.client.send({ type: "proxy:ready" });
+    ctx.every(30_000, () => ctx.client.send({ type: "proxy:ping" }));
+  },
+});
+```
+
+Connection rules receive typed `client` and optional `upstream` peers plus `ctx.raw` for advanced access to the underlying `ws` sockets. Prefer `ctx.every()` over manual timers so cleanup stays automatic on close.
 
 ### 4.2 Rule Organization & Archival Strategy
 

@@ -227,6 +227,48 @@ export default defineConfig({
 });
 ```
 
+### WebSocket Welcome And Heartbeat
+
+**Scenario:** Send a welcome event and periodic ping messages without waiting for the client to send first.
+
+```typescript
+// rules/ws/heartbeat.ts
+import { wsConnectionRule } from "../../utils.js";
+
+export const Heartbeat = wsConnectionRule({
+  onConnect: (ctx) => {
+    ctx.client.send({ type: "proxy:ready" });
+    ctx.every(30_000, () => {
+      ctx.client.send({ type: "proxy:ping", at: Date.now() });
+    });
+  },
+});
+```
+
+```typescript
+// override-proxy.config.ts
+import { defineConfig } from "./config.js";
+
+export default defineConfig({
+  servers: [
+    {
+      port: 4000,
+      routes: [
+        {
+          name: "mock-chat",
+          path: "/ws/mock-chat",
+          ws: {
+            mode: "mock",
+            rulesDir: "./rules/ws",
+          },
+          http: false,
+        },
+      ],
+    },
+  ],
+});
+```
+
 ## Basic Examples
 
 ### 1. Simple Path Match

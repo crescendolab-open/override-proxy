@@ -100,6 +100,8 @@ async function createRouteRuntimes(
       metaMap: httpRegistry.metaMap,
       wsRules: wsRegistry.wsRules,
       wsMetaMap: wsRegistry.wsMetaMap,
+      wsConnectionRules: wsRegistry.wsConnectionRules,
+      wsConnectionMetaMap: wsRegistry.wsConnectionMetaMap,
     });
   }
 
@@ -155,10 +157,12 @@ function logServerStartup(
   );
   console.log(
     `Routes:\n${routes
-      .map(({ route, overrides, wsRules }) => {
+      .map(({ route, overrides, wsConnectionRules, wsRules }) => {
         const target = route.target ?? "<none>";
         const wsRuleCount =
-          route.ws === false ? "" : `, ${wsRules.length} WS rules`;
+          route.ws === false
+            ? ""
+            : `, ${wsRules.length} WS rules, ${wsConnectionRules.length} WS connection rules`;
         return `  - ${route.path} -> ${target} (${overrides.length} HTTP rules${wsRuleCount})`;
       })
       .join("\n")}`,

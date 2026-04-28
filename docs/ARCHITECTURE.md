@@ -125,18 +125,18 @@ Code: [route-matching.ts](../route-matching.ts)
 
 ## Core Files
 
-| File                                        | Purpose                                                                    |
-| ------------------------------------------- | -------------------------------------------------------------------------- |
-| [index.ts](../index.ts)                     | Side-effect-free package API exports for config and rule helpers           |
-| [cli.ts](../cli.ts)                         | CLI command parsing, config discovery, `serve`, `validate`, exit codes     |
-| [config.ts](../config.ts)                   | Public config types, legacy env mapping, normalization, validation         |
-| [server-runtime.ts](../server-runtime.ts)   | Starts configured servers, loads route rules, attaches WS upgrade handlers |
-| [http-app.ts](../http-app.ts)               | Express app factory, CORS, control endpoint, route-scoped HTTP dispatch    |
-| [rule-loader.ts](../rule-loader.ts)         | Loads HTTP and WebSocket rules from directories                            |
-| [ws-direct-proxy.ts](../ws-direct-proxy.ts) | Routes upgrade requests and handles direct WS proxy mode                   |
-| [ws-bridge.ts](../ws-bridge.ts)             | Bridge/mock WebSocket runtime and message action pipeline                  |
-| [proxy-fallback.ts](../proxy-fallback.ts)   | Route-specific HTTP proxy fallback                                         |
-| [utils.ts](../utils.ts)                     | `rule()`, `wsRule()`, public rule interfaces                               |
+| File                                        | Purpose                                                                      |
+| ------------------------------------------- | ---------------------------------------------------------------------------- |
+| [index.ts](../index.ts)                     | Side-effect-free package API exports for config and rule helpers             |
+| [cli.ts](../cli.ts)                         | CLI command parsing, config discovery, `serve`, `validate`, exit codes       |
+| [config.ts](../config.ts)                   | Public config types, legacy env mapping, normalization, validation           |
+| [server-runtime.ts](../server-runtime.ts)   | Starts configured servers, loads route rules, attaches WS upgrade handlers   |
+| [http-app.ts](../http-app.ts)               | Express app factory, CORS, control endpoint, route-scoped HTTP dispatch      |
+| [rule-loader.ts](../rule-loader.ts)         | Loads HTTP and WebSocket rules from directories                              |
+| [ws-direct-proxy.ts](../ws-direct-proxy.ts) | Routes upgrade requests and handles direct WS proxy mode                     |
+| [ws-bridge.ts](../ws-bridge.ts)             | Bridge/mock WebSocket runtime, connection hooks, and message action pipeline |
+| [proxy-fallback.ts](../proxy-fallback.ts)   | Route-specific HTTP proxy fallback                                           |
+| [utils.ts](../utils.ts)                     | `rule()`, `wsRule()`, `wsConnectionRule()`, public rule interfaces           |
 
 ## Rule Types
 
@@ -165,9 +165,18 @@ interface WebSocketRule {
   test(ctx: WsMessageContext): boolean | Promise<boolean>;
   handler(ctx: WsMessageContext): WsRuleAction | Promise<WsRuleAction>;
 }
+
+interface WebSocketConnectionRule {
+  name?: string;
+  enabled?: boolean;
+  test(ctx: WsConnectionContext): boolean | Promise<boolean>;
+  onConnect(
+    ctx: WsConnectionContext,
+  ): void | (() => void) | Promise<void | (() => void)>;
+}
 ```
 
-The loader accepts named exports, default exports, `rules`, and `wsRules` arrays. Named exports become log/display names when the rule has no explicit name.
+The loader accepts named exports, default exports, `rules`, `wsRules`, and `wsConnectionRules` arrays. Named exports become log/display names when the rule has no explicit name.
 
 ## Testing
 

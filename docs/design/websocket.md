@@ -3,7 +3,7 @@
 WebSocket support has three modes:
 
 - Direct proxy mode for transparent forwarding.
-- Bridge mode for bidirectional message inspection, mutation, skip, emit, and mock behavior.
+- Bridge mode for bidirectional message inspection, mutation, skip, emit, connection events, and mock behavior.
 - Mock mode for local-only WebSocket behavior without an upstream target.
 
 Use direct proxy mode when no message-level logic is needed. Use bridge mode when rules need to inspect or change payloads.
@@ -105,6 +105,51 @@ interface WsMessageContext {
 
 `json` is populated only when the message is text and parses as JSON. `jsonObject` is populated only when parsed JSON is a non-array object. Invalid JSON should not close the connection by default.
 
+## Connection Context
+
+Use connection rules when behavior is not tied to an incoming message. Common cases include welcome messages, periodic pings, server-push mocks, or seeding an upstream socket immediately after connect.
+
+```ts
+import { wsConnectionRule } from "override-proxy";
+
+export const Heartbeat = wsConnectionRule({
+  onConnect: (ctx) => {
+    ctx.client.send({ type: "proxy:ready" });
+
+    ctx.every(30_000, () => {
+      ctx.client.send({ type: "proxy:ping", at: Date.now() });
+    });
+  },
+});
+```
+
+```ts
+interface WsConnectionContext {
+  serverName: string;
+  routeName: string;
+  connectionId: string;
+  path: string;
+  headers: IncomingHttpHeaders;
+  client: WsPeer;
+  upstream: WsPeer | null;
+  raw: {
+    client: WebSocket;
+    upstream: WebSocket | null;
+  };
+  every(intervalMs: number, callback: () => void | Promise<void>): () => void;
+  dispose(disposer: () => void | Promise<void>): void;
+  close(code?: number, reason?: string): void;
+}
+
+interface WsPeer {
+  readyState: "connecting" | "open" | "closing" | "closed";
+  send(message: WsMessageBody): void;
+  close(code?: number, reason?: string): void;
+}
+```
+
+`ctx.upstream` is present only for bridge routes with a target. Sends to a connecting upstream are queued and flushed once upstream opens. `ctx.every()` and returned disposers are cleaned up when the connection closes. Use `ctx.raw` only for advanced cases that need the underlying `ws` socket API.
+
 ## Actions
 
 | Action                    | Meaning                                      |
@@ -144,8 +189,9 @@ The helper may expose `emitEvent(type, payload)` later, but it should serialize 
 4. If `ws.mode` is `direct`, forward upgrade transparently.
 5. If `ws.mode` is `bridge`, accept client socket and optionally connect upstream.
 6. If `ws.mode` is `mock`, accept client socket without opening upstream.
-7. Apply message rules for each direction.
-8. Close both sides when either side closes unless a rule explicitly handles the close.
+7. Run connection rules.
+8. Apply message rules for each direction.
+9. Close both sides and clean connection disposers when either side closes.
 
 ## Mock-Only Mode
 
@@ -198,6 +244,8 @@ Do not log full payloads by default. Payload logging should require explicit deb
 | Upstream-side skip      | Selected upstream messages are not sent to client                         |
 | Custom client message   | Rule emits an additional message to the client                            |
 | Custom upstream message | Rule emits an additional message to upstream                              |
+| Connection welcome      | Rule sends a client message immediately after connect                     |
+| Connection heartbeat    | Rule sends periodic ping messages without waiting for incoming traffic    |
 | Mock-only socket        | Route handles WebSocket messages without opening an upstream connection   |
 | Binary passthrough      | Binary frames are forwarded unless a rule changes them                    |
 
@@ -211,6 +259,9 @@ Do not log full payloads by default. Payload logging should require explicit deb
 | Bridge route mutates upstream message        | Client receives replacement payload                                          |
 | Rule returns `skip()` for client message     | Upstream receives nothing                                                    |
 | Rule calls `emitToClient()`                  | Client receives extra message                                                |
+| `wsConnectionRule()` sends on connect        | Client receives message before sending anything                              |
+| `wsConnectionRule()` uses `ctx.every()`      | Client receives periodic messages and timer stops on close                   |
+| Connection rule sends to connecting upstream | Message is queued and flushed after upstream opens                           |
 | Mock-only route has no target                | Client can still receive rule-generated messages                             |
 | Upstream unavailable                         | Client closes with configured code and server stays alive                    |
 | Invalid JSON text message                    | Rule sees `json: null`, `jsonObject: null`, and raw text remains forwardable |

@@ -1,8 +1,17 @@
 import fg from "fast-glob";
 import fsExtra from "fs-extra";
 import { basename, join } from "pathe";
-import { isOverrideRule, isWebSocketRule } from "./utils.js";
-import type { OverrideRule, OverrideRuleMeta, WebSocketRule } from "./utils.js";
+import {
+  isOverrideRule,
+  isWebSocketConnectionRule,
+  isWebSocketRule,
+} from "./utils.js";
+import type {
+  OverrideRule,
+  OverrideRuleMeta,
+  WebSocketConnectionRule,
+  WebSocketRule,
+} from "./utils.js";
 
 const RULE_FILE_PATTERNS = ["**/*.ts", "**/*.mts", "**/*.js", "**/*.mjs"];
 const RULE_FILE_IGNORES = ["**/*.d.ts", "**/*.d.mts"];
@@ -19,11 +28,19 @@ export type LoadedWebSocketRule = {
   exportName?: string | undefined;
 };
 
+export type LoadedWebSocketConnectionRule = {
+  rule: WebSocketConnectionRule;
+  relPath: string;
+  exportName?: string | undefined;
+};
+
 export interface RuleRegistry {
   overrides: OverrideRule[];
   wsRules: WebSocketRule[];
+  wsConnectionRules: WebSocketConnectionRule[];
   metaMap: WeakMap<OverrideRule, OverrideRuleMeta>;
   wsMetaMap: WeakMap<WebSocketRule, OverrideRuleMeta>;
+  wsConnectionMetaMap: WeakMap<WebSocketConnectionRule, OverrideRuleMeta>;
 }
 
 export interface LoadRuleRegistryOptions {
@@ -90,12 +107,47 @@ export async function loadWebSocketRulesFromDir(
   return loaded;
 }
 
+export async function loadWebSocketConnectionRulesFromDir(
+  dir: string,
+): Promise<LoadedWebSocketConnectionRule[]> {
+  if (!(await fsExtra.pathExists(dir))) return [];
+  const entries = await fg(RULE_FILE_PATTERNS, {
+    cwd: dir,
+    dot: false,
+    ignore: RULE_FILE_IGNORES,
+  });
+  const loaded: LoadedWebSocketConnectionRule[] = [];
+  for (const rel of entries) {
+    const full = join(dir, rel);
+    try {
+      const mod = toModuleRecord(await import(full));
+      for (const { rule, exportName } of collectWebSocketConnectionRuleExports(
+        mod,
+      )) {
+        loaded.push({
+          rule: withWebSocketConnectionExportName(rule, exportName),
+          relPath: rel,
+          exportName,
+        });
+      }
+    } catch (e) {
+      console.error("Failed loading rule module", join(basename(dir), rel), e);
+    }
+  }
+  return loaded;
+}
+
 export function createRuleRegistry(): RuleRegistry {
   return {
     overrides: [],
     wsRules: [],
+    wsConnectionRules: [],
     metaMap: new WeakMap<OverrideRule, OverrideRuleMeta>(),
     wsMetaMap: new WeakMap<WebSocketRule, OverrideRuleMeta>(),
+    wsConnectionMetaMap: new WeakMap<
+      WebSocketConnectionRule,
+      OverrideRuleMeta
+    >(),
   };
 }
 
@@ -127,6 +179,20 @@ export function registerWebSocketRules(
   }
 }
 
+export function registerWebSocketConnectionRules(
+  registry: RuleRegistry,
+  loaded: LoadedWebSocketConnectionRule[],
+  dir: string,
+): void {
+  const dirName = basename(dir);
+  for (const { rule, relPath, exportName } of loaded) {
+    const file = `${dirName}/${relPath}`;
+    const id = exportName ? `${file}:${exportName}` : file;
+    registry.wsConnectionMetaMap.set(rule, { file, export: exportName, id });
+    registry.wsConnectionRules.push(rule);
+  }
+}
+
 export async function loadRuleRegistry({
   rulesDir,
   externalRulesDir,
@@ -154,6 +220,11 @@ export async function loadRuleRegistryFromDirs({
       await loadWebSocketRulesFromDir(rulesDir),
       rulesDir,
     );
+    registerWebSocketConnectionRules(
+      registry,
+      await loadWebSocketConnectionRulesFromDir(rulesDir),
+      rulesDir,
+    );
   }
 
   return registry;
@@ -166,6 +237,10 @@ type CollectedHttpRule = {
 };
 type CollectedWebSocketRule = {
   rule: WebSocketRule;
+  exportName?: string | undefined;
+};
+type CollectedWebSocketConnectionRule = {
+  rule: WebSocketConnectionRule;
   exportName?: string | undefined;
 };
 
@@ -193,6 +268,30 @@ function collectWebSocketRuleExports(
   for (const [key, value] of Object.entries(mod)) {
     if (key === "default" || key === "rules" || key === "wsRules") continue;
     collectWebSocketRules(collected, value, key);
+  }
+
+  return collected;
+}
+
+function collectWebSocketConnectionRuleExports(
+  mod: ModuleRecord,
+): CollectedWebSocketConnectionRule[] {
+  const collected: CollectedWebSocketConnectionRule[] = [];
+  collectWebSocketConnectionRules(collected, mod["default"]);
+  collectWebSocketConnectionRules(collected, mod["rules"]);
+  collectWebSocketConnectionRules(collected, mod["wsRules"]);
+  collectWebSocketConnectionRules(collected, mod["wsConnectionRules"]);
+
+  for (const [key, value] of Object.entries(mod)) {
+    if (
+      key === "default" ||
+      key === "rules" ||
+      key === "wsRules" ||
+      key === "wsConnectionRules"
+    ) {
+      continue;
+    }
+    collectWebSocketConnectionRules(collected, value, key);
   }
 
   return collected;
@@ -230,6 +329,24 @@ function collectWebSocketRules(
   }
 }
 
+function collectWebSocketConnectionRules(
+  collected: CollectedWebSocketConnectionRule[],
+  value: unknown,
+  exportName?: string,
+): void {
+  if (isWebSocketConnectionRule(value)) {
+    collected.push({ rule: value, exportName });
+    return;
+  }
+  if (!Array.isArray(value)) return;
+
+  for (const item of value) {
+    if (isWebSocketConnectionRule(item)) {
+      collected.push({ rule: item, exportName });
+    }
+  }
+}
+
 function withHttpExportName(
   rule: OverrideRule,
   exportName?: string,
@@ -241,6 +358,13 @@ function withWebSocketExportName(
   rule: WebSocketRule,
   exportName?: string,
 ): WebSocketRule {
+  return exportName && !rule.name ? { ...rule, name: exportName } : rule;
+}
+
+function withWebSocketConnectionExportName(
+  rule: WebSocketConnectionRule,
+  exportName?: string,
+): WebSocketConnectionRule {
   return exportName && !rule.name ? { ...rule, name: exportName } : rule;
 }
 

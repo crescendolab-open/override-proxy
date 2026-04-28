@@ -10,7 +10,12 @@ import {
 } from "./logger.js";
 import { createProxyFallback } from "./proxy-fallback.js";
 import { findRoute, rewriteRoutePath } from "./route-matching.js";
-import type { OverrideRule, OverrideRuleMeta, WebSocketRule } from "./utils.js";
+import type {
+  OverrideRule,
+  OverrideRuleMeta,
+  WebSocketConnectionRule,
+  WebSocketRule,
+} from "./utils.js";
 
 export interface CreateHttpAppOptions {
   target: string;
@@ -32,6 +37,8 @@ export interface HttpRouteRuntime {
   metaMap: WeakMap<OverrideRule, OverrideRuleMeta>;
   wsRules: WebSocketRule[];
   wsMetaMap: WeakMap<WebSocketRule, OverrideRuleMeta>;
+  wsConnectionRules: WebSocketConnectionRule[];
+  wsConnectionMetaMap: WeakMap<WebSocketConnectionRule, OverrideRuleMeta>;
 }
 
 export interface CreateRoutedHttpAppOptions {
