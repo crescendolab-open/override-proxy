@@ -1,13 +1,12 @@
 {
   "name": "override-proxy",
-  "version": "0.0.0",
-  "private": true,
+  "version": "0.1.0",
   "type": "module",
   "description": "Override-first local mock + proxy server",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
-    "override-proxy": "./dist/cli.js"
+    "override-proxy": "dist/cli.js"
   },
   "exports": {
     ".": {
@@ -25,18 +24,39 @@
   },
   "files": [
     "dist",
+    "docs",
+    "AGENTS.md",
     "README.md",
     "LICENSE"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "dev": "node scripts/dev.mjs"
+    "dev": "node scripts/dev.mjs",
+    "prepack": "tsc -p tsconfig.build.json",
+    "test": "for test_file in tests/*.test.ts; do tsx \"$test_file\" || exit 1; done",
+    "typecheck": "tsc --noEmit"
   },
   "keywords": [
     "mock",
     "proxy",
-    "override"
+    "override",
+    "websocket",
+    "reverse-proxy"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/crescendolab-open/override-proxy.git"
+  },
+  "bugs": {
+    "url": "https://github.com/crescendolab-open/override-proxy/issues"
+  },
+  "homepage": "https://github.com/crescendolab-open/override-proxy#readme",
+  "engines": {
+    "node": ">=24.5.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "dependencies": {
     "@dotenvx/dotenvx": "^1.22.0",
     "chalk": "^5.3.0",

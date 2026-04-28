@@ -35,18 +35,57 @@ the current command list.
 
 ## Quick Start
 
+Install it in your app or mock workspace:
+
+```bash
+pnpm add -D override-proxy
+```
+
+Create `override-proxy.config.ts`:
+
+```ts
+import { defineConfig, rule } from "override-proxy";
+
+const Ping = rule("GET", "/__ping", (_req, res) => {
+  res.json({ ok: true, source: "override-proxy" });
+});
+
+export default defineConfig({
+  servers: [
+    {
+      port: 4000,
+      routes: [
+        {
+          path: "/",
+          target: "https://pokeapi.co/api/v2/",
+          http: { rules: [Ping] },
+        },
+      ],
+    },
+  ],
+});
+```
+
+Validate and serve:
+
+```bash
+pnpm exec override-proxy validate
+pnpm exec override-proxy serve
+curl http://localhost:4000/__ping
+```
+
+npm users can run the same CLI with `npx override-proxy`.
+
+## Repository Development
+
+From this source checkout:
+
 ```bash
 pnpm install
 pnpm dev
 ```
 
 `pnpm dev` runs the CLI serve path through `nodemon`.
-
-Smoke test:
-
-```bash
-curl http://localhost:4000/__env
-```
 
 Validate a config file without listening:
 

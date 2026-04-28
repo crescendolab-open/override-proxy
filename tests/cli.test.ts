@@ -27,7 +27,7 @@ const packageJson: unknown = JSON.parse(
   await readFile(new URL("../package.json", import.meta.url), "utf8"),
 );
 
-assert.equal(readPath(packageJson, ["bin", "override-proxy"]), "./dist/cli.js");
+assert.equal(readPath(packageJson, ["bin", "override-proxy"]), "dist/cli.js");
 assert.equal(readPath(packageJson, ["main"]), "./dist/index.js");
 assert.equal(readPath(packageJson, ["types"]), "./dist/index.d.ts");
 assert.equal(
