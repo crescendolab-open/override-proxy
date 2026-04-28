@@ -26,12 +26,20 @@ Key features:
 | [docs/EXAMPLES.md](docs/EXAMPLES.md)                                     | Copy-paste examples for common scenarios           |
 | [docs/PATTERNS.md](docs/PATTERNS.md)                                     | Best practices and common pitfalls                 |
 | [docs/DOC-WRITING-GUIDE.md](docs/DOC-WRITING-GUIDE.md)                   | Documentation writing standards (for contributors) |
+| [skills/override-proxy/SKILL.md](skills/override-proxy/SKILL.md)         | Codex skill for agent-assisted usage               |
 
 ## Development Tools
 
 The workflow is config-driven: import rule values in config, validate the config,
 then run focused tests or the built CLI. See [docs/TOOLS.md](docs/TOOLS.md) for
 the current command list.
+
+## Codex Skill
+
+This repository includes an installable Codex skill at
+`skills/override-proxy`. Install it from this GitHub repository with the
+skill-installer workflow by using repo `crescendolab-open/override-proxy` and
+path `skills/override-proxy`.
 
 ## Quick Start
 
