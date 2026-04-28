@@ -168,6 +168,8 @@ Routes are matched by pathname with priority, longest segment-aware prefix, decl
 
 ## Rule System
 
+Rule files are loaded from `rules/**/*.ts|mts|js|mjs`, excluding declaration files and dot-prefixed files or folders.
+
 Interface:
 
 ```ts

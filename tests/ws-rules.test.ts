@@ -44,7 +44,7 @@ const rulesDir = join(tempDir, "rules");
 try {
   await mkdir(rulesDir, { recursive: true });
   await writeFile(
-    join(rulesDir, "ws-rule.js"),
+    join(rulesDir, "ws-rule.mjs"),
     `
 export const ClientPassthrough = {
   enabled: true,
@@ -61,7 +61,7 @@ export const ClientPassthrough = {
   assert.equal(registry.overrides.length, 0);
   assert.equal(registry.wsRules.length, 1);
   assert.equal(loaded.name, "ClientPassthrough");
-  assert.equal(meta.file, "rules/ws-rule.js");
+  assert.equal(meta.file, "rules/ws-rule.mjs");
   assert.equal(meta.export, "ClientPassthrough");
 } finally {
   await rm(tempDir, { recursive: true, force: true });

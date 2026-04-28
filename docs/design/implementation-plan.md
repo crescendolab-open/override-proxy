@@ -130,6 +130,15 @@ Goal: support local config files without making discovery broad or surprising.
 - [x] Keep shared `override-proxy.config.ts|mts|js|mjs` as fallback before legacy mode.
 - [x] Add tests for local-priority and shared fallback discovery.
 
+## Phase 10: ESM Rule File Discovery
+
+Goal: align rule file discovery with config file ESM extensions.
+
+- [x] Load HTTP rule files from `.ts`, `.mts`, `.js`, and `.mjs`.
+- [x] Load WebSocket rule files from `.ts`, `.mts`, `.js`, and `.mjs`.
+- [x] Continue excluding declaration files and dotfiles.
+- [x] Add `.mjs` coverage for HTTP and WebSocket rule loading.
+
 ## Next-Step Rule
 
 When the user asks for the next step:

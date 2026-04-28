@@ -4,6 +4,9 @@ import { basename, join } from "pathe";
 import { isOverrideRule, isWebSocketRule } from "./utils.js";
 import type { OverrideRule, OverrideRuleMeta, WebSocketRule } from "./utils.js";
 
+const RULE_FILE_PATTERNS = ["**/*.ts", "**/*.mts", "**/*.js", "**/*.mjs"];
+const RULE_FILE_IGNORES = ["**/*.d.ts", "**/*.d.mts"];
+
 export type LoadedRule = {
   rule: OverrideRule;
   relPath: string;
@@ -35,10 +38,10 @@ export interface LoadRuleRegistryFromDirsOptions {
 
 export async function loadRulesFromDir(dir: string): Promise<LoadedRule[]> {
   if (!(await fsExtra.pathExists(dir))) return [];
-  const entries = await fg(["**/*.ts", "**/*.js"], {
+  const entries = await fg(RULE_FILE_PATTERNS, {
     cwd: dir,
     dot: false,
-    ignore: ["**/*.d.ts"],
+    ignore: RULE_FILE_IGNORES,
   });
   const loaded: LoadedRule[] = [];
   for (const rel of entries) {
@@ -63,10 +66,10 @@ export async function loadWebSocketRulesFromDir(
   dir: string,
 ): Promise<LoadedWebSocketRule[]> {
   if (!(await fsExtra.pathExists(dir))) return [];
-  const entries = await fg(["**/*.ts", "**/*.js"], {
+  const entries = await fg(RULE_FILE_PATTERNS, {
     cwd: dir,
     dot: false,
-    ignore: ["**/*.d.ts"],
+    ignore: RULE_FILE_IGNORES,
   });
   const loaded: LoadedWebSocketRule[] = [];
   for (const rel of entries) {

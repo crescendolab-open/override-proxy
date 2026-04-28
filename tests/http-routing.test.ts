@@ -47,7 +47,7 @@ const rulesDir = join(tempDir, "rules");
 try {
   await mkdir(rulesDir, { recursive: true });
   await writeFile(
-    join(rulesDir, "api-rule.js"),
+    join(rulesDir, "api-rule.mjs"),
     `
 export const ApiMock = {
   name: "api-mock",

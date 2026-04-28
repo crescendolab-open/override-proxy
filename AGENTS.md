@@ -118,7 +118,7 @@ Config mode:
 
 ## 4. Rule System Quick Reference
 
-Rules are loaded from `rules/**/*.ts|js` (excluding `.d.ts`, dotfiles). All exports are inspected:
+Rules are loaded from `rules/**/*.ts|mts|js|mjs` (excluding `.d.ts`, `.d.mts`, and dotfiles). All exports are inspected:
 
 - Named exports whose value is an `OverrideRule` (or an array of them) are included.
 - Legacy patterns: default export (single or array) and a `rules` named array are still supported.

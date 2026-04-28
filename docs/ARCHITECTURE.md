@@ -18,7 +18,7 @@ flowchart TB
   BridgeWs["ws-bridge.ts"]
   Routes["route-matching.ts"]
   Proxy["proxy-fallback.ts"]
-  Rules["rules/**/*.ts"]
+  Rules["rules/**/*.ts|mts|js|mjs"]
   Upstream["Upstream HTTP or WS"]
   Client["Client"]
 
