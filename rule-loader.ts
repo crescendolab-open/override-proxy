@@ -34,6 +34,17 @@ export type LoadedWebSocketConnectionRule = {
   exportName?: string | undefined;
 };
 
+type LoadedRuleEntry<T> = {
+  rule: T;
+  relPath: string;
+  exportName?: string | undefined;
+};
+
+type CollectedRuleEntry<T> = {
+  rule: T;
+  exportName?: string | undefined;
+};
+
 export interface RuleRegistry {
   overrides: OverrideRule[];
   wsRules: WebSocketRule[];
@@ -54,78 +65,52 @@ export interface LoadRuleRegistryFromDirsOptions {
 }
 
 export async function loadRulesFromDir(dir: string): Promise<LoadedRule[]> {
-  if (!(await fsExtra.pathExists(dir))) return [];
-  const entries = await fg(RULE_FILE_PATTERNS, {
-    cwd: dir,
-    dot: false,
-    ignore: RULE_FILE_IGNORES,
-  });
-  const loaded: LoadedRule[] = [];
-  for (const rel of entries) {
-    const full = join(dir, rel);
-    try {
-      const mod = toModuleRecord(await import(full));
-      for (const { rule, exportName } of collectOverrideRuleExports(mod)) {
-        loaded.push({
-          rule: withHttpExportName(rule, exportName),
-          relPath: rel,
-          exportName,
-        });
-      }
-    } catch (e) {
-      console.error("Failed loading rule module", join(basename(dir), rel), e);
-    }
-  }
-  return loaded;
+  return loadRuleEntriesFromDir(
+    dir,
+    collectOverrideRuleExports,
+    withHttpExportName,
+  );
 }
 
 export async function loadWebSocketRulesFromDir(
   dir: string,
 ): Promise<LoadedWebSocketRule[]> {
-  if (!(await fsExtra.pathExists(dir))) return [];
-  const entries = await fg(RULE_FILE_PATTERNS, {
-    cwd: dir,
-    dot: false,
-    ignore: RULE_FILE_IGNORES,
-  });
-  const loaded: LoadedWebSocketRule[] = [];
-  for (const rel of entries) {
-    const full = join(dir, rel);
-    try {
-      const mod = toModuleRecord(await import(full));
-      for (const { rule, exportName } of collectWebSocketRuleExports(mod)) {
-        loaded.push({
-          rule: withWebSocketExportName(rule, exportName),
-          relPath: rel,
-          exportName,
-        });
-      }
-    } catch (e) {
-      console.error("Failed loading rule module", join(basename(dir), rel), e);
-    }
-  }
-  return loaded;
+  return loadRuleEntriesFromDir(
+    dir,
+    collectWebSocketRuleExports,
+    withWebSocketExportName,
+  );
 }
 
 export async function loadWebSocketConnectionRulesFromDir(
   dir: string,
 ): Promise<LoadedWebSocketConnectionRule[]> {
+  return loadRuleEntriesFromDir(
+    dir,
+    collectWebSocketConnectionRuleExports,
+    withWebSocketConnectionExportName,
+  );
+}
+
+async function loadRuleEntriesFromDir<T>(
+  dir: string,
+  collect: (mod: ModuleRecord) => CollectedRuleEntry<T>[],
+  withExportName: (rule: T, exportName?: string) => T,
+): Promise<LoadedRuleEntry<T>[]> {
   if (!(await fsExtra.pathExists(dir))) return [];
   const entries = await fg(RULE_FILE_PATTERNS, {
     cwd: dir,
     dot: false,
     ignore: RULE_FILE_IGNORES,
   });
-  const loaded: LoadedWebSocketConnectionRule[] = [];
+  const loaded: LoadedRuleEntry<T>[] = [];
   for (const rel of entries) {
     const full = join(dir, rel);
     try {
       const mod = toModuleRecord(await import(full));
-      for (const { rule, exportName } of collectWebSocketConnectionRuleExports(
-        mod,
-      )) {
+      for (const { rule, exportName } of collect(mod)) {
         loaded.push({
-          rule: withWebSocketConnectionExportName(rule, exportName),
+          rule: withExportName(rule, exportName),
           relPath: rel,
           exportName,
         });
@@ -231,18 +216,10 @@ export async function loadRuleRegistryFromDirs({
 }
 
 type ModuleRecord = Record<string, unknown>;
-type CollectedHttpRule = {
-  rule: OverrideRule;
-  exportName?: string | undefined;
-};
-type CollectedWebSocketRule = {
-  rule: WebSocketRule;
-  exportName?: string | undefined;
-};
-type CollectedWebSocketConnectionRule = {
-  rule: WebSocketConnectionRule;
-  exportName?: string | undefined;
-};
+type CollectedHttpRule = CollectedRuleEntry<OverrideRule>;
+type CollectedWebSocketRule = CollectedRuleEntry<WebSocketRule>;
+type CollectedWebSocketConnectionRule =
+  CollectedRuleEntry<WebSocketConnectionRule>;
 
 function collectOverrideRuleExports(mod: ModuleRecord): CollectedHttpRule[] {
   const collected: CollectedHttpRule[] = [];
