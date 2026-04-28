@@ -14,15 +14,48 @@ import {
 const tempDir = await mkdtemp(join(tmpdir(), "override-proxy-config-"));
 
 try {
+  await writeFile(join(tempDir, "override-proxy.config.local.ts"), "");
   await writeFile(join(tempDir, "override-proxy.config.mjs"), "");
   await writeFile(join(tempDir, "override-proxy.config.ts"), "");
 
   assert.equal(
     await discoverConfigFile(tempDir),
-    join(tempDir, "override-proxy.config.ts"),
+    join(tempDir, "override-proxy.config.local.ts"),
   );
 } finally {
   await rm(tempDir, { recursive: true, force: true });
+}
+
+const localConfigDir = await mkdtemp(
+  join(tmpdir(), "override-proxy-local-config-"),
+);
+
+try {
+  await writeFile(join(localConfigDir, "override-proxy.config.local.ts"), "");
+  await writeFile(join(localConfigDir, "override-proxy.local.config.ts"), "");
+
+  assert.equal(
+    await discoverConfigFile(localConfigDir),
+    join(localConfigDir, "override-proxy.local.config.ts"),
+  );
+} finally {
+  await rm(localConfigDir, { recursive: true, force: true });
+}
+
+const defaultConfigDir = await mkdtemp(
+  join(tmpdir(), "override-proxy-default-config-"),
+);
+
+try {
+  await writeFile(join(defaultConfigDir, "override-proxy.config.mjs"), "");
+  await writeFile(join(defaultConfigDir, "override-proxy.config.ts"), "");
+
+  assert.equal(
+    await discoverConfigFile(defaultConfigDir),
+    join(defaultConfigDir, "override-proxy.config.ts"),
+  );
+} finally {
+  await rm(defaultConfigDir, { recursive: true, force: true });
 }
 
 assert.equal(

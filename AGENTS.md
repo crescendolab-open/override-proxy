@@ -106,7 +106,10 @@ Never hardcode secrets. Place sensitive values only in `.env.local`. Keep `.env.
 
 Config mode:
 
-- Default discovery: `override-proxy.config.ts`, `.mts`, `.js`, `.mjs` in cwd.
+- Default discovery checks local config first:
+  `override-proxy.local.config.ts|mts|js|mjs`,
+  `override-proxy.config.local.ts|mts|js|mjs`, then
+  `override-proxy.config.ts|mts|js|mjs`.
 - `--config <path>` overrides discovery.
 - Config supports multiple servers, route-scoped HTTP rules, route-specific targets, rewrites, and WebSocket transports.
 - If no config exists, legacy mode preserves `PROXY_TARGET`, `PORT`, `CORS_ORIGINS`, built-in `rules/`, and optional `--rules-dir`.

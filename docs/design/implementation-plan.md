@@ -121,6 +121,15 @@ Goal: make the CLI package metadata match the implemented runtime behavior.
 - [x] Verify built CLI with `node dist/cli.js validate`.
 - [x] Verify package contents with `npm pack --dry-run`.
 
+## Phase 9: Local Config Discovery
+
+Goal: support local config files without making discovery broad or surprising.
+
+- [x] Discover `override-proxy.local.config.ts|mts|js|mjs` before shared config.
+- [x] Discover `override-proxy.config.local.ts|mts|js|mjs` before shared config.
+- [x] Keep shared `override-proxy.config.ts|mts|js|mjs` as fallback before legacy mode.
+- [x] Add tests for local-priority and shared fallback discovery.
+
 ## Next-Step Rule
 
 When the user asks for the next step:

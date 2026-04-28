@@ -5,6 +5,14 @@ import { dirname, join, resolve } from "pathe";
 import { parseRulesDir } from "./utils.js";
 
 export const DEFAULT_CONFIG_FILES = [
+  "override-proxy.local.config.ts",
+  "override-proxy.local.config.mts",
+  "override-proxy.local.config.js",
+  "override-proxy.local.config.mjs",
+  "override-proxy.config.local.ts",
+  "override-proxy.config.local.mts",
+  "override-proxy.config.local.js",
+  "override-proxy.config.local.mjs",
   "override-proxy.config.ts",
   "override-proxy.config.mts",
   "override-proxy.config.js",
@@ -160,7 +168,9 @@ interface RulesDirConfig {
   rulesDirs?: readonly string[];
 }
 
-export function defineConfig<const T extends OverrideProxyConfig>(config: T): T {
+export function defineConfig<const T extends OverrideProxyConfig>(
+  config: T,
+): T {
   return config;
 }
 
@@ -299,7 +309,8 @@ function normalizeServerConfig(
   baseDir: string,
 ): NormalizedServer {
   return {
-    name: server.name ?? (serverIndex === 0 ? "main" : `server-${serverIndex + 1}`),
+    name:
+      server.name ?? (serverIndex === 0 ? "main" : `server-${serverIndex + 1}`),
     host: server.host ?? "0.0.0.0",
     preferredPort: server.port ?? 4000,
     cors: normalizeCorsConfig(server.cors),
@@ -332,10 +343,9 @@ function normalizeRouteConfig(
   baseDir: string,
 ): NormalizedRoute {
   const routeRulesDirs = resolveRulesDirs(route, baseDir);
-  const httpRulesDirs =
-    route.http
-      ? [...routeRulesDirs, ...resolveRulesDirs(route.http, baseDir)]
-      : routeRulesDirs;
+  const httpRulesDirs = route.http
+    ? [...routeRulesDirs, ...resolveRulesDirs(route.http, baseDir)]
+    : routeRulesDirs;
 
   return {
     name: route.name ?? defaultRouteName(route.path, routeIndex),

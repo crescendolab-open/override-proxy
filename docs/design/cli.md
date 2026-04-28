@@ -67,10 +67,18 @@ If config defines multiple servers, flags that target one server must require `-
 
 Default lookup uses the effective cwd:
 
-1. `override-proxy.config.ts`
-2. `override-proxy.config.mts`
-3. `override-proxy.config.js`
-4. `override-proxy.config.mjs`
+1. `override-proxy.local.config.ts`
+2. `override-proxy.local.config.mts`
+3. `override-proxy.local.config.js`
+4. `override-proxy.local.config.mjs`
+5. `override-proxy.config.local.ts`
+6. `override-proxy.config.local.mts`
+7. `override-proxy.config.local.js`
+8. `override-proxy.config.local.mjs`
+9. `override-proxy.config.ts`
+10. `override-proxy.config.mts`
+11. `override-proxy.config.js`
+12. `override-proxy.config.mjs`
 
 `--config` bypasses lookup. Missing explicit config is a hard error. Missing default config enters legacy mode.
 

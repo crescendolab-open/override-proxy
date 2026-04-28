@@ -116,10 +116,20 @@ When consuming the built or installed package, config files can import helpers f
 
 Default config discovery checks the current working directory for:
 
-1. `override-proxy.config.ts`
-2. `override-proxy.config.mts`
-3. `override-proxy.config.js`
-4. `override-proxy.config.mjs`
+1. `override-proxy.local.config.ts`
+2. `override-proxy.local.config.mts`
+3. `override-proxy.local.config.js`
+4. `override-proxy.local.config.mjs`
+5. `override-proxy.config.local.ts`
+6. `override-proxy.config.local.mts`
+7. `override-proxy.config.local.js`
+8. `override-proxy.config.local.mjs`
+9. `override-proxy.config.ts`
+10. `override-proxy.config.mts`
+11. `override-proxy.config.js`
+12. `override-proxy.config.mjs`
+
+Local config names are ignored by the repository's default `.gitignore`.
 
 If no config file exists, override-proxy runs in legacy mode using `PROXY_TARGET`, `PORT`, `CORS_ORIGINS`, the built-in `rules/` directory, and optional `--rules-dir`.
 
