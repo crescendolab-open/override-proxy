@@ -458,7 +458,11 @@ function validatePath(
 }
 
 export function loadEnvironment(): void {
-  dotenvx.config({ path: [".env.local", ".env.default"], quiet: true });
+  dotenvx.config({
+    path: [".env.local", ".env.default"],
+    quiet: true,
+    ignore: ["MISSING_ENV_FILE"],
+  });
 }
 
 export function resolveRuntimeConfig(

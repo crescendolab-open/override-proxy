@@ -11,15 +11,18 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
+      "import": "./dist/index.js",
+      "require": "./dist/index.js"
     },
     "./main": {
       "types": "./dist/main.d.ts",
-      "import": "./dist/main.js"
+      "import": "./dist/main.js",
+      "require": "./dist/main.js"
     },
     "./cli": {
       "types": "./dist/cli.d.ts",
-      "import": "./dist/cli.js"
+      "import": "./dist/cli.js",
+      "require": "./dist/cli.js"
     }
   },
   "files": [
@@ -36,7 +39,7 @@
     "changeset:version": "changeset version",
     "prepack": "tsc -p tsconfig.build.json",
     "release": "pnpm run build && changeset publish",
-    "test": "for test_file in tests/*.test.ts; do tsx \"$test_file\" || exit 1; done",
+    "test": "node --import tsx --test tests/*.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "keywords": [
@@ -55,7 +58,7 @@
   },
   "homepage": "https://github.com/crescendolab-open/override-proxy#readme",
   "engines": {
-    "node": ">=24.5.0"
+    "node": ">=20.19.0"
   },
   "publishConfig": {
     "access": "public"
