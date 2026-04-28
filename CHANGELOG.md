@@ -1,5 +1,11 @@
 # @crescendolab/override-proxy
 
+## 0.1.2
+
+### Patch Changes
+
+- 467c6d8: Add installation guidance to the override-proxy Codex skill.
+
 ## 0.1.1
 
 ### Patch Changes
