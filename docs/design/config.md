@@ -25,7 +25,7 @@ Rules should not need to know the full topology. They receive a stable context f
 ## Public Config Shape
 
 ```ts
-import { defineConfig } from "override-proxy";
+import { defineConfig } from "@crescendolab/override-proxy";
 import { GetUser } from "./rules/get-user.js";
 import { RootHtml } from "./rules/root-html.js";
 

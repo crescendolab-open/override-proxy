@@ -52,7 +52,7 @@ Recommended defaults:
 ## Rule Shape
 
 ```ts
-import { wsRule } from "override-proxy";
+import { wsRule } from "@crescendolab/override-proxy";
 
 export const PatchChatMessage = wsRule({
   test: (ctx) =>
@@ -112,7 +112,7 @@ interface WsMessageContext {
 Use connection rules when behavior is not tied to an incoming message. Common cases include welcome messages, periodic pings, server-push mocks, or seeding an upstream socket immediately after connect.
 
 ```ts
-import { wsConnectionRule } from "override-proxy";
+import { wsConnectionRule } from "@crescendolab/override-proxy";
 
 export const Heartbeat = wsConnectionRule({
   onConnect: (ctx) => {

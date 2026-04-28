@@ -38,13 +38,13 @@ the current command list.
 Install it in your app or mock workspace:
 
 ```bash
-pnpm add -D override-proxy
+pnpm add -D @crescendolab/override-proxy
 ```
 
 Create `override-proxy.config.ts`:
 
 ```ts
-import { defineConfig, rule } from "override-proxy";
+import { defineConfig, rule } from "@crescendolab/override-proxy";
 
 const Ping = rule("GET", "/__ping", (_req, res) => {
   res.json({ ok: true, source: "override-proxy" });
@@ -74,7 +74,7 @@ pnpm exec override-proxy serve
 curl http://localhost:4000/__ping
 ```
 
-npm users can run the same CLI with `npx override-proxy`.
+npm users can run the same CLI with `npx @crescendolab/override-proxy`.
 
 ## Repository Development
 
@@ -150,7 +150,7 @@ override-proxy serve --config ./override-proxy.config.ts
 override-proxy validate --config ./override-proxy.config.ts
 ```
 
-When consuming the built or installed package, config files can import helpers from `override-proxy`. In this source checkout before building, import from local source files such as `./config.js`.
+When consuming the built or installed package, config files can import helpers from `@crescendolab/override-proxy`. In this source checkout before building, import from local source files such as `./config.js`.
 
 Default config discovery checks the current working directory for:
 
