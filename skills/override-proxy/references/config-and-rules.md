@@ -1,8 +1,11 @@
 # Config And Rules
 
-## Installed Package Usage
+## Quick Local Setup
 
-Install in the app or mock workspace:
+Before authoring config, choose an install or invocation path from
+`installation.md`. For most repository-owned configs, add the package as a local
+dev dependency so `override-proxy.config.ts` can import helpers from the
+project:
 
 ```bash
 pnpm add -D @crescendolab/override-proxy

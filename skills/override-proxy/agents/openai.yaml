@@ -1,4 +1,4 @@
 interface:
   display_name: "override-proxy"
-  short_description: "Build override-proxy configs and rules"
-  default_prompt: "Use $override-proxy to add a local HTTP override rule and validate the config."
+  short_description: "Install and configure override-proxy"
+  default_prompt: "Use $override-proxy to choose an install path, add a local HTTP override rule, and validate the config."

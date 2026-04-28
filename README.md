@@ -41,6 +41,9 @@ This repository includes an installable Codex skill at
 skill-installer workflow by using repo `crescendolab-open/override-proxy` and
 path `skills/override-proxy`.
 
+The skill helps agents choose an installation or invocation path that fits the
+user, repository, and task context before authoring configs or rules.
+
 ## Quick Start
 
 Install it in your app or mock workspace:
