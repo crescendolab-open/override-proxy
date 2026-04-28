@@ -1,6 +1,6 @@
 {
   "name": "override-proxy",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "type": "module",
   "description": "Override-first local mock + proxy server",
   "main": "./dist/index.js",
