@@ -1,37 +1,89 @@
 {
   "name": "override-proxy",
   "version": "0.0.0",
-  "private": true,
   "type": "module",
   "description": "Override-first local mock + proxy server",
-  "main": "main.ts",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "override-proxy": "dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.js"
+    },
+    "./main": {
+      "types": "./dist/main.d.ts",
+      "import": "./dist/main.js",
+      "require": "./dist/main.js"
+    },
+    "./cli": {
+      "types": "./dist/cli.d.ts",
+      "import": "./dist/cli.js",
+      "require": "./dist/cli.js"
+    }
+  },
+  "files": [
+    "dist",
+    "docs",
+    "AGENTS.md",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
-    "dev": "node scripts/dev.mjs"
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "node scripts/dev.mjs",
+    "changeset": "changeset",
+    "changeset:version": "changeset version",
+    "prepack": "tsc -p tsconfig.build.json",
+    "release": "pnpm run build && changeset publish",
+    "test": "node --import tsx --test tests/*.test.ts",
+    "typecheck": "tsc --noEmit"
   },
   "keywords": [
     "mock",
     "proxy",
-    "override"
+    "override",
+    "websocket",
+    "reverse-proxy"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/crescendolab-open/override-proxy.git"
+  },
+  "bugs": {
+    "url": "https://github.com/crescendolab-open/override-proxy/issues"
+  },
+  "homepage": "https://github.com/crescendolab-open/override-proxy#readme",
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "dependencies": {
     "@dotenvx/dotenvx": "^1.22.0",
     "chalk": "^5.3.0",
     "cors": "^2.8.5",
     "es-toolkit": "^1.39.10",
     "express": "^4.21.2",
-    "fast-glob": "^3.3.2",
     "fs-extra": "^11.2.0",
     "get-port": "^7.1.0",
     "http-proxy-middleware": "^3.0.5",
     "pathe": "^1.1.2",
-    "tsx": "^4.20.4"
+    "tsx": "^4.20.4",
+    "ws": "^8.20.0"
   },
   "devDependencies": {
+    "@changesets/cli": "^2.31.0",
     "@tsconfig/node24": "^24.0.0",
     "@tsconfig/strictest": "^2.0.0",
     "@types/cors": "^2.8.17",
     "@types/express": "^4.17.21",
     "@types/fs-extra": "^11.0.4",
+    "@types/ws": "^8.18.1",
     "nodemon": "^3.1.4",
     "prettier": "^3.3.0",
     "typescript": "^5.5.0"

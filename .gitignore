@@ -36,16 +36,14 @@ coverage
 .env.local.*
 !.env.default
 
-# Local override patterns
+# Local override config
 *.local
 *.local.*
 
-# Optional: ignore rules directory if generated externally
+# Local scratch rule modules for this checkout. Runtime does not scan this
+# directory; config imports decide what is active.
 /rules/**/*
-!/rules/_demo.ts
-# Re-include all directories so that specific files (e.g. .gitkeep) can be unignored.
 !/rules/**/
-!/rules/**/.gitkeep
 
 # TypeScript cache
 *.tsbuildinfo

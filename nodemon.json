@@ -1,7 +1,7 @@
 {
-  "watch": ["main.ts", "utils.ts", "rules/"],
-  "ext": "ts,js,json",
-  "exec": "tsx main.ts",
+  "watch": ["*.ts", "override-proxy*.config.*", "rules/"],
+  "ext": "ts,mts,js,mjs,json",
+  "exec": "tsx cli.ts serve",
   "env": {
     "NODE_ENV": "development"
   }

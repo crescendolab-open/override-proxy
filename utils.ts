@@ -1,142 +1,326 @@
 import type { Method, MethodList, RuleHandler, RuleTest } from "./types.js";
-import { resolve } from "pathe";
+import type { IncomingHttpHeaders } from "node:http";
+import type WebSocket from "ws";
 
 export interface OverrideRule {
-  name?: string; // identifier (for logs). Will be overridden by export name if present.
-  enabled?: boolean; // default true
-  methods: MethodList; // non-empty
+  name?: string;
+  enabled?: boolean;
+  methods: MethodList;
   test: RuleTest;
   handler: RuleHandler;
 }
 
-// Internal metadata kept separately (not attached directly to the rule object)
-export interface OverrideRuleMeta {
-  file: string; // relative file path of rule provider
-  export?: string | undefined; // export key (undefined for legacy/default)
-  id: string; // synthesized id: <relPath>[:export]
+export type WsMessageDirection = "client" | "upstream";
+export type WsPayload = string | Buffer | object;
+export type WsPeerReadyState = "connecting" | "open" | "closing" | "closed";
+
+export interface WsPeer {
+  readyState: WsPeerReadyState;
+  send(payload: WsPayload): void;
+  close(code?: number, reason?: string): void;
 }
 
-// Config form accepted by rule(): rule({ path?, test?, methods?, ... }).
-// - methods default: ["GET"]. Provide path or test.
+export interface WsRawConnection {
+  client: WebSocket;
+  upstream: WebSocket | null;
+}
+
+export type WsConnectionDisposer = () => void | Promise<void>;
+export type WsConnectionSetup =
+  | void
+  | WsConnectionDisposer
+  | Promise<void | WsConnectionDisposer>;
+
+export interface WsConnectionContext {
+  serverName: string;
+  routeName: string;
+  connectionId: string;
+  path: string;
+  headers: IncomingHttpHeaders;
+  client: WsPeer;
+  upstream: WsPeer | null;
+  raw: WsRawConnection;
+  every(
+    intervalMs: number,
+    callback: () => void | Promise<void>,
+  ): WsConnectionDisposer;
+  dispose(disposer: WsConnectionDisposer): void;
+  close(code?: number, reason?: string): void;
+}
+
+export interface WsMessageContext {
+  serverName: string;
+  routeName: string;
+  connectionId: string;
+  direction: WsMessageDirection;
+  path: string;
+  headers: IncomingHttpHeaders;
+  raw: Buffer;
+  text: string | null;
+  json: unknown | null;
+  jsonObject: Record<string, unknown> | null;
+  forward(payload?: WsPayload): WsRuleAction;
+  skip(): WsRuleAction;
+  emitToClient(payload: WsPayload): void;
+  emitToUpstream(payload: WsPayload): void;
+  close(code?: number, reason?: string): WsRuleAction;
+  fail(error: string): WsRuleAction;
+}
+
+export type WsRuleAction =
+  | { type: "forward"; payload?: WsPayload }
+  | { type: "skip" }
+  | { type: "emitToClient"; payload: WsPayload }
+  | { type: "emitToUpstream"; payload: WsPayload }
+  | { type: "close"; code?: number; reason?: string }
+  | { type: "fail"; error: string };
+
+export interface WebSocketRule {
+  name?: string;
+  enabled?: boolean;
+  test(ctx: WsMessageContext): boolean | Promise<boolean>;
+  handler(ctx: WsMessageContext): WsRuleAction | Promise<WsRuleAction>;
+}
+
+export interface WsRuleConfig {
+  name?: string;
+  enabled?: boolean;
+  test?: (ctx: WsMessageContext) => boolean | Promise<boolean>;
+  handler(ctx: WsMessageContext): WsRuleAction | Promise<WsRuleAction>;
+}
+
+export interface WebSocketConnectionRule {
+  name?: string;
+  enabled?: boolean;
+  test(ctx: WsConnectionContext): boolean | Promise<boolean>;
+  onConnect(ctx: WsConnectionContext): WsConnectionSetup;
+}
+
+export interface WsConnectionRuleConfig {
+  name?: string;
+  enabled?: boolean;
+  test?: (ctx: WsConnectionContext) => boolean | Promise<boolean>;
+  onConnect(ctx: WsConnectionContext): WsConnectionSetup;
+}
+
 export interface RuleConfig {
   name?: string;
   enabled?: boolean;
-  methods?: Method[]; // defaults to ['GET']
+  methods?: readonly Method[];
   path?: string | RegExp;
   test?: RuleTest;
   handler: RuleHandler;
 }
 
 export function rule(
-  method: Method | Method[],
+  method: Method | readonly Method[],
   path: string | RegExp,
   handler: RuleHandler,
-  options?: { enabled?: boolean }, // name removed: export name now authoritative
+  options?: { enabled?: boolean },
 ): OverrideRule;
 export function rule(config: RuleConfig): OverrideRule;
 export function rule(
-  a: Method | Method[] | RuleConfig,
+  a: Method | readonly Method[] | RuleConfig,
   b?: string | RegExp,
-  c?: OverrideRule["handler"],
-  d?: { name?: string; enabled?: boolean },
+  c?: RuleHandler,
+  d?: { enabled?: boolean },
 ): OverrideRule {
-  // Object config form
-  if (
-    typeof a === "object" &&
-    !Array.isArray(a) &&
-    typeof (a as any).handler === "function" &&
-    b === undefined
-  ) {
-    const cfg = a as RuleConfig;
-    const enabled = cfg.enabled !== false;
-    const methods = (
-      (cfg.methods && cfg.methods.length ? cfg.methods : ["GET"]) as Method[]
-    ).map((m) => m.toUpperCase() as Method) as MethodList;
-    const hasPath = cfg.path != null;
-    if (!hasPath && typeof cfg.test !== "function") {
-      throw new Error("rule(config) requires either path or test");
-    }
-    const isString = typeof cfg.path === "string";
-    const regex = !isString && cfg.path instanceof RegExp ? cfg.path : null;
-    const toMethod = (m: string): Method => m.toUpperCase() as Method;
-    const testFn: RuleTest = cfg.test
-      ? (req) =>
-          enabled && methods.includes(toMethod(req.method)) && cfg.test!(req)
-      : (req) => {
-          if (!enabled) return false;
-          if (!methods.includes(toMethod(req.method))) return false;
-          if (isString) return req.path === cfg.path;
-          return regex!.test(req.path);
-        };
-    const name =
-      cfg.name ||
-      (hasPath
-        ? isString
-          ? (cfg.path as string)
-          : String(cfg.path)
-        : undefined);
-    return {
-      ...(name ? { name } : {}),
-      enabled,
-      methods,
-      test: testFn,
-      handler: cfg.handler,
-    } as OverrideRule;
+  if (isRuleConfig(a) && b === undefined) {
+    return createRuleFromConfig(a);
   }
-  // Signature form: rule(method, path, handler, options?)
-  const method = a as Method | Method[];
-  const path = b as string | RegExp;
-  const handler = c as OverrideRule["handler"];
-  const options = d as { enabled?: boolean } | undefined;
-  const methods = (Array.isArray(method) ? method : [method]).map(
-    (m) => m.toUpperCase() as Method,
-  ) as MethodList;
-  const enabled = options?.enabled !== false;
-  const isString = typeof path === "string";
-  const regex = isString ? null : (path as RegExp);
+
+  if (typeof a !== "string" && !Array.isArray(a)) {
+    throw new Error("rule(method, path, handler) requires a method");
+  }
+  if (typeof b !== "string" && !(b instanceof RegExp)) {
+    throw new Error("rule(method, path, handler) requires a path");
+  }
+  if (typeof c !== "function") {
+    throw new Error("rule(method, path, handler) requires a handler");
+  }
+
+  return createRuleFromPath(a, b, c, d);
+}
+
+function createRuleFromConfig(config: RuleConfig): OverrideRule {
+  const enabled = config.enabled !== false;
+  const methods = normalizeConfigMethods(config.methods);
+  const pathTest =
+    config.path === undefined ? null : createPathTest(config.path);
+  const customTest = config.test;
+
+  if (!pathTest && !customTest) {
+    throw new Error("rule(config) requires either path or test");
+  }
+
+  const test: RuleTest = (req) => {
+    if (!enabled || !methodListIncludes(methods, req.method)) return false;
+    if (customTest) return customTest(req);
+    return pathTest ? pathTest(req.path) : false;
+  };
+  const name = config.name ?? ruleNameFromPath(config.path);
+
   return {
-    name: isString ? (path as string) : path.toString(),
+    ...(name ? { name } : {}),
+    enabled,
+    methods,
+    test,
+    handler: config.handler,
+  };
+}
+
+function createRuleFromPath(
+  method: Method | readonly Method[],
+  path: string | RegExp,
+  handler: RuleHandler,
+  options?: { enabled?: boolean },
+): OverrideRule {
+  const methods = normalizeMethodList(method);
+  const enabled = options?.enabled !== false;
+  const pathTest = createPathTest(path);
+
+  return {
+    name: String(path),
     enabled,
     methods,
     test: (req) => {
-      const m = (req.method || "").toUpperCase() as Method;
-      if (!enabled) return false;
-      if (!methods.includes(m)) return false;
-      return isString ? req.path === path : regex!.test(req.path);
+      if (!enabled || !methodListIncludes(methods, req.method)) return false;
+      return pathTest(req.path);
     },
     handler,
   };
 }
 
-// Legacy export normalization kept for backward compatibility (not used by loader anymore)
-export type RulesModule =
-  | { default?: OverrideRule | OverrideRule[]; rules?: OverrideRule[] }
-  | OverrideRule
-  | OverrideRule[];
-
-export function normalizeModule(m: RulesModule): OverrideRule[] {
-  if (Array.isArray(m)) return m;
-  if ((m as any)?.rules) return (m as any).rules;
-  if ((m as any)?.default) {
-    const d = (m as any).default;
-    return Array.isArray(d) ? d : [d];
+function createPathTest(path: string | RegExp): (pathname: string) => boolean {
+  if (typeof path === "string") {
+    return (pathname) => pathname === path;
   }
-  return [m as OverrideRule];
+  return (pathname) => path.test(pathname);
 }
 
-export function isOverrideRule(obj: any): obj is OverrideRule {
+function ruleNameFromPath(
+  path: string | RegExp | undefined,
+): string | undefined {
+  return path === undefined ? undefined : String(path);
+}
+
+function normalizeConfigMethods(
+  methods: readonly Method[] | undefined,
+): MethodList {
+  return methods && methods.length > 0 ? normalizeMethodList(methods) : ["GET"];
+}
+
+function normalizeMethodList(method: Method | readonly Method[]): MethodList {
+  const methods = typeof method === "string" ? [method] : method;
+  const [first, ...rest] = methods;
+  if (!first) {
+    throw new Error("rule() requires at least one method");
+  }
+  return [toMethod(first), ...rest.map(toMethod)];
+}
+
+function toMethod(method: string): Method {
+  switch (method.toUpperCase()) {
+    case "GET":
+      return "GET";
+    case "POST":
+      return "POST";
+    case "PUT":
+      return "PUT";
+    case "PATCH":
+      return "PATCH";
+    case "DELETE":
+      return "DELETE";
+    case "HEAD":
+      return "HEAD";
+    case "OPTIONS":
+      return "OPTIONS";
+    default:
+      throw new Error(`Unsupported HTTP method: ${method}`);
+  }
+}
+
+function toMethodOrNull(method: string | undefined): Method | null {
+  if (!method) return null;
+  try {
+    return toMethod(method);
+  } catch {
+    return null;
+  }
+}
+
+function methodListIncludes(
+  methods: MethodList,
+  method: string | undefined,
+): boolean {
+  const normalizedMethod = toMethodOrNull(method);
+  return normalizedMethod ? methods.includes(normalizedMethod) : false;
+}
+
+export function wsRule(config: WsRuleConfig): WebSocketRule {
+  const enabled = config.enabled !== false;
+  return {
+    ...(config.name ? { name: config.name } : {}),
+    enabled,
+    test: async (ctx) => enabled && (config.test ? config.test(ctx) : true),
+    handler: config.handler,
+  };
+}
+
+export function wsConnectionRule(
+  config: WsConnectionRuleConfig,
+): WebSocketConnectionRule {
+  const enabled = config.enabled !== false;
+  return {
+    ...(config.name ? { name: config.name } : {}),
+    enabled,
+    test: async (ctx) => enabled && (config.test ? config.test(ctx) : true),
+    onConnect: config.onConnect,
+  };
+}
+
+export function isOverrideRule(obj: unknown): obj is OverrideRule {
   return (
-    !!obj &&
-    typeof obj === "object" &&
-    typeof obj.test === "function" &&
-    typeof obj.handler === "function" &&
-    Array.isArray(obj.methods)
+    isRecord(obj) &&
+    typeof obj["test"] === "function" &&
+    typeof obj["handler"] === "function" &&
+    isMethodList(obj["methods"])
   );
 }
 
-/** Extract resolved path from `--rules-dir=<path>` in argv. Returns null if absent or empty. */
-export function parseRulesDir(argv: string[]): string | null {
-  const arg = argv.find((a) => a.startsWith("--rules-dir="));
-  const value = arg?.split("=").slice(1).join("=");
-  return value ? resolve(value) : null;
+export function isWebSocketRule(obj: unknown): obj is WebSocketRule {
+  return (
+    isRecord(obj) &&
+    typeof obj["test"] === "function" &&
+    typeof obj["handler"] === "function" &&
+    !Array.isArray(obj["methods"])
+  );
+}
+
+export function isWebSocketConnectionRule(
+  obj: unknown,
+): obj is WebSocketConnectionRule {
+  return (
+    isRecord(obj) &&
+    typeof obj["test"] === "function" &&
+    typeof obj["onConnect"] === "function"
+  );
+}
+
+function isRuleConfig(value: unknown): value is RuleConfig {
+  return isRecord(value) && typeof value["handler"] === "function";
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isMethodList(value: unknown): value is MethodList {
+  return (
+    Array.isArray(value) &&
+    value.length > 0 &&
+    value.every(
+      (method) => typeof method === "string" && toMethodOrNull(method),
+    )
+  );
 }
