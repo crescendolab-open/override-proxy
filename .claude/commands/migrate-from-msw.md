@@ -1,67 +1,62 @@
 # Migrate from MSW
 
-Convert Mock Service Worker (MSW) handlers to override-proxy rules.
+Convert Mock Service Worker (MSW) handlers to override-proxy rules and attach
+the converted rules through config. Rule files are inert until imported by the
+active `override-proxy.config.*`.
 
 ## Invocation
 
-Users can invoke this command by:
+- `/migrate-from-msw` - Find likely MSW handler files and plan the migration.
+- `/migrate-from-msw <filepath>` - Convert one MSW handlers file.
+- `/migrate-from-msw --all` - Find and convert all visible MSW handler files in
+  the project.
 
-- `/migrate-from-msw` - Interactive mode (browse for handlers file)
-- `/migrate-from-msw <filepath>` - Convert specific MSW handlers file
-- `/migrate-from-msw --all` - Find and convert all MSW files in project
+## Workflow
 
-## Behavior
+1. Confirm setup:
+   - Ensure the consuming app has `@crescendolab/override-proxy` installed as a
+     project-local devDependency.
+   - Locate or create the target `override-proxy.config.ts` or local ignored
+     config.
+2. Discover MSW handlers:
+   - Check `src/mocks/handlers.ts|js`, `**/mocks/handlers.*`, and files
+     importing from `msw`.
+   - Extract HTTP handlers, GraphQL handlers, and any unsupported protocol
+     handlers.
+3. Convert handlers into rule modules:
+   - `rest.get()` / `http.get()` -> `rule("GET", ...)`.
+   - `req.params` -> regex captures or explicit `test()` logic.
+   - `ctx.status()` -> `res.status()`.
+   - `ctx.json()` -> `res.json()`.
+   - `ctx.delay()` -> async handler with `await new Promise(...)`.
+4. Attach converted rules explicitly:
+   - Import rule values from the target config.
+   - Add HTTP rules to the relevant `route.http.rules` array.
+   - Use config factories or scenario arrays for optional packs.
+5. Validate and test:
+   - Source checkout: `pnpm exec tsx cli.ts validate --config <path>`.
+   - Consuming app: `pnpm exec override-proxy validate --config <path>`.
+   - Generate focused curl commands and confirm `match <ruleName>` logs.
+6. Report manual follow-ups for unsupported or ambiguous cases.
 
-When invoked, this command:
+## Import Choice
 
-### Phase 1: Discovery
+Use package imports in consuming apps:
 
-1. **Find MSW files** - Search for:
-   - `src/mocks/handlers.ts|js`
-   - `**/mocks/handlers.*`
-   - Files importing from `msw`
+```ts
+import { rule } from "@crescendolab/override-proxy";
+```
 
-2. **Parse MSW code** - Extract handlers:
-   - `rest.get()`, `rest.post()`, etc.
-   - `graphql.query()`, `graphql.mutation()`
-   - Handler parameters and responses
+Use local source imports only inside this source checkout before build output
+exists:
 
-### Phase 2: Conversion
+```ts
+import { rule } from "../utils.js";
+```
 
-3. **Transform syntax** - Convert:
-   - MSW imports → override-proxy imports
-   - `rest.METHOD()` → `rule()`
-   - `req.params` → regex captures
-   - `ctx.status()` → `res.status()`
-   - `ctx.json()` → `res.json()`
-   - `ctx.delay()` → async/await
+## Basic Mapping
 
-4. **Generate rule files** - Create:
-   - One file per handler (or group related)
-   - Proper naming and organization
-   - Comments noting original MSW code
-
-### Phase 3: Verification
-
-5. **Create migration checklist** - Track:
-   - Handlers converted
-   - Handlers skipped (manual intervention needed)
-   - Test commands for each rule
-
-6. **Generate migration guide** - Document:
-   - What changed
-   - How to test
-   - What to do with original MSW files
-
-## Conversion Mappings
-
-From docs/PATTERNS.md "Migration Patterns":
-
-### Basic Handler Conversion
-
-**MSW:**
-
-```typescript
+```ts
 import { rest } from "msw";
 
 export const handlers = [
@@ -72,326 +67,67 @@ export const handlers = [
 ];
 ```
 
-**override-proxy:**
+```ts
+import { rule } from "@crescendolab/override-proxy";
 
-```typescript
-import { rule } from "../utils.js";
+const UserDetailPath = /^\/api\/users\/([^/]+)$/;
 
 export const UserDetail = rule({
+  name: "user-detail",
   methods: ["GET"],
-  path: /^\/api\/users\/(\d+)$/,
+  path: UserDetailPath,
   handler: (req, res) => {
-    const match = req.path.match(/^\/api\/users\/(\d+)$/);
-    const id = match ? match[1] : "unknown";
-    res.status(200).json({ id, name: `User ${id}` });
+    const match = UserDetailPath.exec(req.path);
+    res.status(200).json({ id: match?.[1] ?? "unknown" });
   },
 });
 ```
 
-### Conversion Rules
+Attach it:
 
-| MSW Syntax                 | override-proxy Equivalent                     | Notes                           |
-| -------------------------- | --------------------------------------------- | ------------------------------- |
-| `rest.get(path, handler)`  | `rule('GET', path, handler)`                  | Simple form                     |
-| `rest.post(path, handler)` | `rule('POST', path, handler)`                 |                                 |
-| `req.params.id`            | Regex capture group                           | Extract from `req.path.match()` |
-| `req.params.*`             | `req.query.*` (if query)                      | Query params work same way      |
-| `req.body`                 | `req.body`                                    | Same (needs body-parser)        |
-| `ctx.status(200)`          | `res.status(200)`                             | Direct mapping                  |
-| `ctx.json(data)`           | `res.json(data)`                              | Direct mapping                  |
-| `ctx.delay(1000)`          | `await new Promise(r => setTimeout(r, 1000))` | Add async                       |
-| `ctx.text(str)`            | `res.send(str)`                               | Plain text                      |
-| `ctx.xml(str)`             | `res.type('xml').send(str)`                   | Set content type                |
-| `return res(...)`          | Just call `res.*()`                           | No return needed                |
+```ts
+import { defineConfig } from "@crescendolab/override-proxy";
+import { UserDetail } from "./rules/user-detail.js";
 
-### Path Parameter Conversion
-
-**MSW path params** → **RegExp captures**
-
-| MSW Pattern                          | override-proxy RegExp                 | Extract Code                                        |
-| ------------------------------------ | ------------------------------------- | --------------------------------------------------- |
-| `/users/:id`                         | `/^\/users\/(\d+)$/`                  | `req.path.match(/^\/users\/(\d+)$/)[1]`             |
-| `/posts/:postId/comments/:commentId` | `/^\/posts\/(\d+)\/comments\/(\d+)$/` | `const [, postId, commentId] = req.path.match(...)` |
-| `/files/:filename`                   | `/^\/files\/([^\/]+)$/`               | `req.path.match(/^\/files\/([^\/]+)$/)[1]`          |
-
-### Special Cases
-
-#### 1. Conditional Responses (MSW)
-
-```typescript
-rest.get("/api/user", (req, res, ctx) => {
-  const token = req.headers.get("Authorization");
-
-  if (!token) {
-    return res(ctx.status(401), ctx.json({ error: "Unauthorized" }));
-  }
-
-  return res(ctx.status(200), ctx.json({ user: "..." }));
+export default defineConfig({
+  servers: [
+    {
+      routes: [
+        {
+          path: "/api",
+          target: "https://api.example.com",
+          http: { rules: [UserDetail] },
+        },
+      ],
+    },
+  ],
 });
 ```
 
-#### 1. Conditional Responses (override-proxy)
-
-```typescript
-export const UserAuth = rule("GET", "/api/user", (req, res) => {
-  const token = req.headers["authorization"];
-
-  if (!token) {
-    return res.status(401).json({ error: "Unauthorized" });
-  }
-
-  res.status(200).json({ user: "..." });
-});
-```
-
-#### 2. Delays (MSW)
-
-```typescript
-rest.get("/api/slow", (req, res, ctx) => {
-  return res(ctx.delay(2000), ctx.json({ data: "slow" }));
-});
-```
-
-#### 2. Delays (override-proxy)
-
-```typescript
-export const SlowEndpoint = rule("GET", "/api/slow", async (req, res) => {
-  await new Promise((resolve) => setTimeout(resolve, 2000));
-  res.json({ data: "slow" });
-});
-```
-
-#### 3. GraphQL (MSW)
-
-```typescript
-graphql.query("GetUser", (req, res, ctx) => {
-  return res(
-    ctx.data({
-      user: { id: 1, name: "John" },
-    }),
-  );
-});
-```
-
-#### 3. GraphQL (override-proxy)
-
-```typescript
-export const GraphQLGetUser = rule("POST", "/graphql", (req, res) => {
-  const { query } = req.body;
-
-  if (query.includes("GetUser")) {
-    return res.json({
-      data: {
-        user: { id: 1, name: "John" },
-      },
-    });
-  }
-
-  res.status(400).json({ errors: [{ message: "Unknown query" }] });
-});
-```
-
-## Automated Conversion Process
-
-```typescript
-interface MSWHandler {
-  method: string;
-  path: string;
-  handler: string; // Full handler code
-  hasParams: boolean;
-  usesDelay: boolean;
-  usesCtx: string[]; // ['status', 'json', 'delay']
-}
-
-async function parseMSWFile(filepath: string): Promise<MSWHandler[]> {
-  const content = await readFile(filepath);
-  const handlers: MSWHandler[] = [];
-
-  // Find all rest.* calls
-  const handlerRegex =
-    /rest\.(get|post|put|patch|delete)\(([^,]+),\s*(\([^)]+\)\s*=>[^}]+})\s*\)/g;
-
-  let match;
-  while ((match = handlerRegex.exec(content)) !== null) {
-    const [, method, pathStr, handlerCode] = match;
-
-    handlers.push({
-      method: method.toUpperCase(),
-      path: pathStr.replace(/['"]/g, ""),
-      handler: handlerCode,
-      hasParams: /:(\w+)/.test(pathStr),
-      usesDelay: /ctx\.delay/.test(handlerCode),
-      usesCtx: extractCtxUsage(handlerCode),
-    });
-  }
-
-  return handlers;
-}
-
-function convertHandler(msw: MSWHandler): string {
-  let code = "";
-
-  // Convert path with params to regex
-  let path = msw.path;
-  if (msw.hasParams) {
-    path = convertPathToRegex(msw.path);
-  }
-
-  // Start rule definition
-  code += `export const ${generateRuleName(msw.path)} = rule({\n`;
-  code += `  methods: ['${msw.method}'],\n`;
-  code += `  path: ${path},\n`;
-
-  // Convert handler
-  if (msw.usesDelay) {
-    code += `  handler: async (req, res) => {\n`;
-  } else {
-    code += `  handler: (req, res) => {\n`;
-  }
-
-  // Convert body
-  let handlerBody = msw.handler;
-
-  // Convert params
-  if (msw.hasParams) {
-    handlerBody = convertParams(handlerBody, msw.path);
-  }
-
-  // Convert ctx.* calls
-  handlerBody = handlerBody.replace(/ctx\.status\((\d+)\)/g, "res.status($1)");
-  handlerBody = handlerBody.replace(/ctx\.json\(([^)]+)\)/g, "res.json($1)");
-  handlerBody = handlerBody.replace(
-    /ctx\.delay\((\d+)\)/g,
-    "await new Promise(r => setTimeout(r, $1))",
-  );
-
-  // Remove return res(...)
-  handlerBody = handlerBody.replace(/return res\([^)]+\);/g, "");
-
-  code += handlerBody;
-  code += `  }\n`;
-  code += `});\n`;
-
-  return code;
-}
-
-function convertPathToRegex(path: string): string {
-  // Convert :param to (\w+) or (\d+)
-  const regex = path.replace(/\//g, "\\/").replace(/:(\w+)/g, (_, name) => {
-    // If param looks like id, use \d+
-    if (name.toLowerCase().includes("id")) {
-      return "(\\d+)";
-    }
-    return "([^\/]+)";
-  });
-
-  return `/^${regex}$/`;
-}
-
-function convertParams(code: string, path: string): string {
-  const params = [...path.matchAll(/:(\w+)/g)].map((m) => m[1]);
-
-  // Add extraction code at the start
-  let extraction = `const match = req.path.match(${convertPathToRegex(path)});\n`;
-
-  params.forEach((param, i) => {
-    extraction += `    const ${param} = match ? match[${i + 1}] : 'unknown';\n`;
-  });
-
-  // Replace req.params.* references
-  let converted = code;
-  params.forEach((param) => {
-    converted = converted.replace(
-      new RegExp(`req\\.params\\.${param}`, "g"),
-      param,
-    );
-  });
-
-  return extraction + converted;
-}
-```
-
-## Output Format
-
-### Migration Report
-
-````markdown
-# MSW to override-proxy Migration Report
-
-## Summary
-
-- Source: src/mocks/handlers.ts
-- Handlers found: 12
-- Converted: 10 ✅
-- Manual review needed: 2 ⚠️
-
-## Converted Handlers
-
-### ✅ GET /api/users/:id → UserDetail
-
-- File: rules/users/detail.ts
-- Status: Converted successfully
-- Test: `curl http://localhost:4000/api/users/123`
-
-### ✅ POST /api/login → LoginAuth
-
-- File: rules/auth/login.ts
-- Status: Converted successfully
-- Test: `curl -X POST http://localhost:4000/api/login -d '{"email":"...","password":"..."}'`
-
-## Manual Review Needed
-
-### ⚠️ GraphQL /graphql
-
-- Reason: Complex query parsing needed
-- Original: src/mocks/handlers.ts:45-60
-- Suggestion: See docs/EXAMPLES.md Example 23 for GraphQL pattern
-
-### ⚠️ WebSocket /ws
-
-- Reason: MSW handler needs manual mapping to raw WebSocket `direct`,
-  `bridge`, or `mock` mode
-- Original: src/mocks/handlers.ts:62-70
-- Suggestion: See `skills/override-proxy/references/websocket.md`
-
-## Migration Checklist
-
-- [ ] Review all converted rules
-- [ ] Test each rule (commands above)
-- [ ] Update MSW imports in test files (if keeping MSW for tests)
-- [ ] Consider archiving original MSW handlers
-- [ ] Update documentation/README
-
-## Next Steps
-
-1. Restart server: `pnpm dev`
-2. Validate the config and confirm expected `match <ruleName>` logs
-3. Run tests: `./scripts/test-all.sh`
-4. Update team on new workflow
-
-## Keeping Both MSW and override-proxy
-
-You can keep MSW for unit tests and use override-proxy for dev:
-
-**package.json:**
-
-```json
-{
-  "scripts": {
-    "test": "vitest", // Uses MSW
-    "dev": "nodemon", // Uses override-proxy
-    "test:integration": "..." // Uses override-proxy
-  }
-}
-```
-````
-
-See docs/PATTERNS.md "Gradual Migration" for details.
-
-```
-
-## Example Interaction
-
-```
-
-User: /migrate-from-msw src/mocks/handlers.ts
+## Manual Review Cases
+
+- GraphQL handlers: convert to `POST /graphql` rules only when operation
+  matching is clear; otherwise leave a manual note.
+- Conditional MSW handlers: put the condition in `test()` so non-matching
+  requests proxy automatically.
+- WebSocket handlers: map manually to raw WebSocket `direct`, `bridge`, or
+  `mock` mode. See `skills/override-proxy/references/websocket.md`.
+- Stateful handlers: keep state local to the rule module or config factory, and
+  make reset behavior explicit.
+
+## Migration Report
+
+Include:
+
+- Source MSW files inspected.
+- Converted rule modules.
+- Config file and route where each rule was attached.
+- Manual review items with file and line references.
+- Validation and focused test commands.
+
+## Guardrails
+
+- Do not add runtime rule directory scanning or registry scripts.
+- Do not activate converted rules by renaming folders.
+- Do not commit real user data, tokens, service names, or production payloads.
+- Keep generated examples synthetic and project paths relative.
