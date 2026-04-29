@@ -1,111 +1,36 @@
 # Toggle Rule Activation
 
-Manage rule and rule group activation state by renaming folders/files.
+Manage rule activation through config imports and `enabled` flags. The runtime
+does not scan rule directories, and this command must not rename folders or rely
+on dot-folder conventions.
 
 ## Invocation
 
-Users can invoke this command by:
-- `/rule-toggle` - Interactive mode listing all toggleable groups
-- `/rule-toggle disable <name>` - Disable rule group
-- `/rule-toggle enable <name>` - Enable rule group
-- `/rule-toggle archive <name>` - Archive to .trash/
+- `/rule-toggle` - List active and inactive rules from the active config.
+- `/rule-toggle disable <ruleName>` - Set one imported rule to `enabled: false`
+  or remove it from the active config array.
+- `/rule-toggle enable <ruleName>` - Re-add the rule to config or set
+  `enabled: true`.
 
-## Behavior
+## Workflow
 
-When invoked, this command:
+1. Locate the active config:
+   - Prefer the explicit `--config` path when the user provides one.
+   - Otherwise follow default discovery for `override-proxy.local.config.*`,
+     `override-proxy.config.local.*`, then `override-proxy.config.*`.
+2. Find the rule value imported by that config.
+3. Choose the smallest config-driven change:
+   - For a single rule: set `enabled: false`.
+   - For a scenario pack: remove or branch the imported array in the config
+     factory.
+   - For local scratch work: use an ignored local config file.
+4. Run `pnpm exec tsx cli.ts validate --config <path>` in this source checkout,
+   or `pnpm exec override-proxy validate --config <path>` in a consuming app.
+5. Report the exact config line changed and the validation result.
 
-1. **Scan Rules Directory** - List all:
-   - Active folders (no dot prefix)
-   - Disabled folders (dot prefix, not in .trash)
-   - Archived folders (in .trash/)
+## Guardrails
 
-2. **Show Current State** - Display organized list:
-   ```
-   Active Groups:
-     - auth/ (3 rules)
-     - commerce/ (5 rules)
-     - demo/ (2 rules)
-
-   Disabled Groups:
-     - .experimental/ (4 rules)
-     - .wip/ (1 rule)
-
-   Archived Groups (.trash/):
-     - legacy-2024/ (8 rules)
-   ```
-
-3. **Execute Action** based on command:
-
-   **Disable**: Rename `rules/name/` → `rules/.name/`
-   - Verify folder exists
-   - Add dot prefix
-   - Confirm success
-   - Remind to restart server
-
-   **Enable**: Rename `rules/.name/` → `rules/name/`
-   - Verify disabled folder exists
-   - Remove dot prefix
-   - Confirm success
-   - Remind to restart server
-
-   **Archive**: Move `rules/name/` → `rules/.trash/name/`
-   - Verify folder exists
-   - Create .trash/ if needed
-   - Move entire folder
-   - Confirm success
-
-4. **Post-Action** - Always remind:
-   - Changes take effect after server restart
-   - Run `pnpm dev` to reload
-   - Check startup logs to verify
-
-## Convention Reference
-
-From docs/PATTERNS.md and docs/ARCHITECTURE.md:
-
-### Folder Naming Conventions
-
-| Status | Pattern | Example |
-|--------|---------|---------|
-| Active | `name/` | `rules/auth/` |
-| Disabled | `.name/` | `rules/.auth/` |
-| Archived | `.trash/name/` | `rules/.trash/auth/` |
-| Personal/WIP | `.{initials}/` or `.wip/` | `rules/.john/`, `rules/.wip/` |
-
-### Loader Behavior
-
-The rule loader (fast-glob with `dot: false`) ignores:
-- Files/folders starting with `.`
-- Type definitions `*.d.ts`
-
-**Code:** main.ts:38-42
-
-## Safety Checks
-
-Before any rename/move operation:
-
-1. **Verify source exists**
-   - For disable: Check `rules/name/` exists
-   - For enable: Check `rules/.name/` exists
-   - For archive: Check `rules/name/` exists
-
-2. **Verify target doesn't exist**
-   - For disable: Check `rules/.name/` doesn't exist
-   - For enable: Check `rules/name/` doesn't exist
-   - For archive: Check `rules/.trash/name/` doesn't exist
-
-3. **Handle conflicts**
-   - If target exists, ask user to choose:
-     - Overwrite (merge)
-     - Rename with suffix (e.g., `.name-2`)
-     - Abort
-
-4. **Git awareness**
-   - Warn if folder has uncommitted changes
-   - Suggest committing or stashing first
-
-## Example Interactions
-
-### Interactive Mode
-```
-User: /rule-toggle
+- Do not add directory scanning, registry scripts, or folder rename workflows.
+- Do not move rules into `.trash` or dot-prefixed folders to control runtime
+  behavior.
+- Keep rule modules importable and free of secrets.
