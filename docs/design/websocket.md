@@ -29,7 +29,7 @@ export default defineConfig({
           name: "chat-ws",
           path: "/ws/chat",
           ws: {
-            target: "wss://chat.example.com/ws/chat",
+            target: "wss://chat.example.com",
             mode: "bridge",
             rules: [PatchChatMessage],
           },
@@ -48,6 +48,8 @@ Recommended defaults:
 | `ws.mode`   | `direct`                                      |
 | `ws.target` | Inherited from route `target` when compatible |
 | `ws.rules`  | `[]`                                          |
+
+`ws.target` should usually be the upstream origin or base path. The client request path is appended after route rewrites, so a request to `/ws/chat` with `target: "wss://chat.example.com"` connects to `wss://chat.example.com/ws/chat`. Repeating the route path in `ws.target` can produce a duplicated upstream path. Bridge mode also forwards the client query string to the upstream URL.
 
 ## Rule Shape
 

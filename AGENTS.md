@@ -56,15 +56,15 @@ Legacy runtime exports preserved from `main.ts` and the package `./main` subpath
 
 ## 2. Commands
 
-| Action              | Command                         | Notes                                      |
-| ------------------- | ------------------------------- | ------------------------------------------ |
-| Install deps        | `pnpm install`                  | Run first / after lock changes             |
-| Start dev server    | `pnpm dev`                      | Uses `nodemon` to restart on TS/JS changes |
-| Build package       | `pnpm run build`                | Emits `dist/` for package exports and bin  |
-| CLI serve           | `pnpm exec tsx cli.ts serve`    | Reads cwd config or legacy env mode        |
-| Validate config     | `pnpm exec tsx cli.ts validate` | Loads and validates without listening      |
-| Built CLI validate  | `node dist/cli.js validate`     | Verifies the standalone CLI output         |
-| Type check (ad‑hoc) | `npx tsc --noEmit`              | Project is strict; keep zero errors        |
+| Action             | Command                         | Notes                                      |
+| ------------------ | ------------------------------- | ------------------------------------------ |
+| Install deps       | `pnpm install`                  | Run first / after lock changes             |
+| Start dev server   | `pnpm dev`                      | Uses `nodemon` to restart on TS/JS changes |
+| Build package      | `pnpm run build`                | Emits `dist/` for package exports and bin  |
+| CLI serve          | `pnpm exec tsx cli.ts serve`    | Reads cwd config or legacy env mode        |
+| Validate config    | `pnpm exec tsx cli.ts validate` | Loads and validates without listening      |
+| Built CLI validate | `node dist/cli.js validate`     | Verifies the standalone CLI output         |
+| Type check         | `pnpm run typecheck`            | Project is strict; keep zero errors        |
 
 VS Code launch configs (`.vscode/launch.json`):
 
@@ -322,7 +322,7 @@ If implementing, update this file & README accordingly.
 
 ## 13. Minimal Review Checklist (Pre-commit)
 
-1. Types compile: `npx tsc --noEmit` → 0 errors.
+1. Types compile: `pnpm run typecheck` → 0 errors.
 2. Server boots: `pnpm dev` (no runtime exceptions) & logs override list.
 3. New rules hit as expected (manual curl test).
 4. No unnecessary dependencies added / removed.

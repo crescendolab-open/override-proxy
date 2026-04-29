@@ -24,7 +24,7 @@ Goal: split the current single-file runtime into focused modules while preservin
 - [x] Extract proxy fallback creation.
 - [x] Keep public exports compatible: `app`, `overrides`, `TARGET`.
 - [x] Keep `pnpm dev`, `/__env`, demo rule, and proxy fallback behavior unchanged.
-- [x] Verify with `npx tsc --noEmit`.
+- [x] Verify with `pnpm run typecheck`.
 - [x] Verify legacy smoke test against `/__env` and `/__demo/hello`.
 
 ## Phase 2: Config Loading And Normalization
@@ -38,7 +38,7 @@ Goal: introduce config files and normalized config while still supporting legacy
 - [x] Map legacy env into normalized config when no config exists.
 - [x] Validate server names, route names, route paths, control prefix, and duplicate topology.
 - [x] Add focused tests for discovery, legacy mapping, normalization, and validation.
-- [x] Verify with `npx tsc --noEmit`.
+- [x] Verify with `pnpm run typecheck`.
 
 ## Phase 3: Multi-Server And Multi-Route HTTP
 
@@ -52,7 +52,7 @@ Goal: support multiple local servers and deterministic route-scoped HTTP behavio
 - [x] Support route rewrite options.
 - [x] Update startup logs to show servers, route order, targets, and rule counts.
 - [x] Add integration tests for route precedence, root fallback, route-specific rules, and route-specific proxy targets.
-- [x] Verify with `npx tsc --noEmit`.
+- [x] Verify with `pnpm run typecheck`.
 
 ## Phase 4: CLI Serve And Validation
 
@@ -65,7 +65,7 @@ Goal: make the project usable as a standalone CLI while preserving the current w
 - [x] Add stable exit codes for usage, validation, loader, runtime, and port failures.
 - [x] Update `pnpm dev` to run the CLI path in watch mode.
 - [x] Add CLI tests for default config, explicit config, config factories, legacy env fallback, and validation errors.
-- [x] Verify with `npx tsc --noEmit`.
+- [x] Verify with `pnpm run typecheck`.
 
 ## Phase 5: WebSocket Direct Proxy
 
@@ -78,7 +78,7 @@ Goal: support transparent WebSocket forwarding before adding message mutation.
 - [x] Forward direct WebSocket traffic to upstream.
 - [x] Add connection IDs and WebSocket logs.
 - [x] Add integration tests for direct bidirectional forwarding and rejected upgrades.
-- [x] Verify with `npx tsc --noEmit`.
+- [x] Verify with `pnpm run typecheck`.
 
 ## Phase 6: WebSocket Bridge And Rules
 
@@ -92,7 +92,7 @@ Goal: support bidirectional message-level mutation, skip, emit, and mock-only so
 - [x] Support mock-only WebSocket routes without upstream targets.
 - [x] Define and implement rule error behavior.
 - [x] Add integration tests for client mutation, upstream mutation, skip, emit, mock-only, invalid JSON, binary messages, and upstream failures.
-- [x] Verify with `npx tsc --noEmit`.
+- [x] Verify with `pnpm run typecheck`.
 
 ## Phase 7: Documentation And Examples
 

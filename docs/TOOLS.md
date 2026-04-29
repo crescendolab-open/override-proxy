@@ -14,7 +14,7 @@ scans a `rules/` directory or toggles folders.
 | Serve explicit config    | `pnpm exec tsx cli.ts serve --config ./override-proxy.config.ts` | Uses one config file                      |
 | Build package            | `pnpm run build`                                                 | Emits `dist/` for package exports and bin |
 | Validate built CLI       | `node dist/cli.js validate`                                      | Smoke test for standalone CLI             |
-| Type check               | `npx tsc --noEmit`                                               | Keep strict TypeScript clean              |
+| Type check               | `pnpm run typecheck`                                             | Keep strict TypeScript clean              |
 
 ## Focused Tests
 

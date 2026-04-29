@@ -1,4 +1,4 @@
 interface:
   display_name: "override-proxy"
-  short_description: "Install and configure override-proxy"
-  default_prompt: "Use $override-proxy to choose an install path, add a local HTTP override rule, and validate the config."
+  short_description: "Configure project-local override-proxy"
+  default_prompt: "Use $override-proxy to add override-proxy as a devDependency, create a local HTTP override rule, and validate the config with the project package manager."

@@ -680,7 +680,7 @@ chmod +x scripts/smoke.sh
 **Setup:**
 
 ```bash
-pnpm add -D vitest supertest @types/supertest
+pnpm install -D vitest supertest @types/supertest
 ```
 
 **Test file: `tests/rules.test.ts`:**
@@ -779,7 +779,7 @@ jobs:
 
       - run: pnpm install
       - run: pnpm test
-      - run: npx tsc --noEmit # Type check
+      - run: pnpm run typecheck
 ```
 
 ---

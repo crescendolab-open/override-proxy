@@ -771,10 +771,10 @@ Use markdown linters to enforce consistency:
 
 ```bash
 # Install
-npm install -g markdownlint-cli
+pnpm install -D markdownlint-cli
 
 # Run
-markdownlint docs/**/*.md
+pnpm exec markdownlint docs/**/*.md
 
 # Config (.markdownlint.json)
 {
@@ -788,10 +788,10 @@ markdownlint docs/**/*.md
 
 ```bash
 # Install
-npm install -g markdown-link-check
+pnpm install -D markdown-link-check
 
 # Run
-markdown-link-check docs/**/*.md
+pnpm exec markdown-link-check docs/**/*.md
 ```
 
 ### Spell Check

@@ -2,13 +2,12 @@
 
 ## Quick Local Setup
 
-Before authoring config, choose an install or invocation path from
-`installation.md`. For most repository-owned configs, add the package as a local
-dev dependency so `override-proxy.config.ts` can import helpers from the
+Before authoring config, use the project-local devDependency path from
+`installation.md` so `override-proxy.config.ts` can import helpers from the
 project:
 
 ```bash
-pnpm add -D @crescendolab/override-proxy
+pnpm install -D @crescendolab/override-proxy
 ```
 
 Create `override-proxy.config.ts`:
@@ -44,7 +43,8 @@ pnpm exec override-proxy serve
 curl http://localhost:4000/__ping
 ```
 
-Use `npx @crescendolab/override-proxy validate` and `npx @crescendolab/override-proxy serve` when there is no local package manager setup.
+If the repository needs stable team commands, add package scripts that call the
+local CLI and run them with `pnpm run`.
 
 ## Source Checkout Usage
 
@@ -209,6 +209,29 @@ export const HeaderTriggered = rule({
 });
 ```
 
+## Conditional Override Recipe
+
+Use rule `test()` functions for partial overrides. Requests that do not match
+any enabled rule automatically fall through to the route's proxy target.
+
+```ts
+import { rule } from "@crescendolab/override-proxy";
+
+export const ConditionalUsers = rule({
+  name: "conditional-users",
+  methods: ["GET"],
+  test: (req) =>
+    req.path === "/api/users" && req.headers["x-mock-mode"] === "1",
+  handler: (_req, res) => {
+    res.json({ users: [] });
+  },
+});
+```
+
+Use `next()` only when a matched rule needs to intentionally pass control to
+later middleware. For ordinary "mock only when this condition is true" behavior,
+put the condition in `test()`.
+
 ## Route Matching And Rewrites
 
 Routes match the URL pathname only. Query strings do not affect route selection.
@@ -275,6 +298,7 @@ Use log source `override` versus `proxy` to confirm whether a rule matched.
 | `/api` route catches too much              | Segment-aware matching excludes `/apix`; use `priority` only for intentional overlap. |
 | Upstream receives wrong path               | Check `rewrite.stripPrefix` and route `path`.                                         |
 | CORS blocked                               | Match origin exactly, without trailing slash, or allow all by omitting origins.       |
+| `/__override` blocked by CORS              | Built-in control endpoints do not apply route CORS; route traffic does.               |
 | Port differs from config                   | Preferred port was busy; check startup log for selected port.                         |
 | Proxy fallback fails                       | Confirm `target` is reachable and route-specific target is set.                       |
 | TypeScript import fails in source checkout | Use local source imports before build; use package imports in consuming apps.         |

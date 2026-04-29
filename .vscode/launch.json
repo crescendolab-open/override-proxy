@@ -18,8 +18,8 @@
       "name": "Run single (tsx main.ts)",
       "type": "node",
       "request": "launch",
-      "runtimeExecutable": "npx",
-      "runtimeArgs": ["tsx", "main.ts"],
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["exec", "tsx", "main.ts"],
       "cwd": "${workspaceFolder}",
       "console": "integratedTerminal",
       "skipFiles": ["<node_internals>/**"]

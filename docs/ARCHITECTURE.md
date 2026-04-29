@@ -187,7 +187,7 @@ pnpm exec tsx tests/cli.test.ts
 pnpm exec tsx tests/ws-direct.test.ts
 pnpm exec tsx tests/ws-rules.test.ts
 pnpm exec tsx tests/ws-bridge.test.ts
-npx tsc --noEmit
+pnpm run typecheck
 ```
 
 ## Debugging Logs

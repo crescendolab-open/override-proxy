@@ -41,15 +41,15 @@ This repository includes an installable Codex skill at
 skill-installer workflow by using repo `crescendolab-open/override-proxy` and
 path `skills/override-proxy`.
 
-The skill helps agents choose an installation or invocation path that fits the
-user, repository, and task context before authoring configs or rules.
+The skill guides agents toward a project-local devDependency setup, then helps
+them author configs or rules with the same commands the repository will use.
 
 ## Quick Start
 
 Install it in your app or mock workspace:
 
 ```bash
-pnpm add -D @crescendolab/override-proxy
+pnpm install -D @crescendolab/override-proxy
 ```
 
 Create `override-proxy.config.ts`:
@@ -85,7 +85,18 @@ pnpm exec override-proxy serve
 curl http://localhost:4000/__ping
 ```
 
-npm users can run the same CLI with `npx @crescendolab/override-proxy`.
+For repeatable team usage, add package scripts in the consuming project:
+
+```json
+{
+  "scripts": {
+    "proxy:validate": "override-proxy validate",
+    "proxy:serve": "override-proxy serve"
+  }
+}
+```
+
+Then run `pnpm run proxy:validate` and `pnpm run proxy:serve`.
 
 ## Repository Development
 
@@ -153,12 +164,12 @@ pnpm exec tsx cli.ts serve --config ./override-proxy.config.ts
 pnpm exec tsx cli.ts validate --config ./override-proxy.config.ts
 ```
 
-After `pnpm run build`, the package exposes `override-proxy` from `./dist/cli.js`. Installed package usage:
+After `pnpm run build`, the package exposes `override-proxy` from `./dist/cli.js`. Installed package usage should go through the consuming project's local dependency:
 
 ```bash
-override-proxy
-override-proxy serve --config ./override-proxy.config.ts
-override-proxy validate --config ./override-proxy.config.ts
+pnpm exec override-proxy
+pnpm exec override-proxy serve --config ./override-proxy.config.ts
+pnpm exec override-proxy validate --config ./override-proxy.config.ts
 ```
 
 When consuming the built or installed package, config files can import helpers from `@crescendolab/override-proxy`. In this source checkout before building, import from local source files such as `./config.js`.
@@ -298,6 +309,10 @@ Route config supports three modes:
 | `bridge` | Accept client socket, optionally connect upstream, and run message rules |
 | `mock`   | Accept client socket without opening an upstream connection              |
 
+For WebSocket routes, set `ws.target` to the upstream origin or base path. The
+client request path is appended after route rewrites, and bridge mode forwards
+the client query string to the upstream URL.
+
 Bridge and mock message rules use `wsRule()`:
 
 ```ts
@@ -406,6 +421,8 @@ export default rule({
 | `/__override` | GET    | Config-mode server and route snapshot |
 | `*`           | ANY    | Route-specific proxy fallback         |
 
+Route CORS settings apply to route traffic, not built-in control endpoints.
+
 Logging pattern: `[id] -> METHOD path` / `match ruleName` / completion line with status & source.
 
 ## Development Workflow
@@ -441,10 +458,10 @@ Restrict CORS: `CORS_ORIGINS=http://localhost:3000,https://dev.example.com`
 
 ## Common Scenarios
 
-Simulate latency: `await new Promise(r => setTimeout(r, 800));`  
-Conditional pass-through: `handler: (req,res,next)=> req.query["passthrough"]? next(): res.json({x:1})`  
-Header trigger: `test: (req)=> req.headers["x-mock-mode"] === "1"`
-WebSocket mock event: `ctx.emitToClient({ type: "proxy:ready" }); return ctx.skip();`
+- Simulate latency: `await new Promise(r => setTimeout(r, 800));`
+- Conditional override: `test: (req)=> req.path === "/api/users" && req.headers["x-mock-mode"] === "1"`
+- Header trigger: `test: (req)=> req.headers["x-mock-mode"] === "1"`
+- WebSocket mock event: `ctx.emitToClient({ type: "proxy:ready" }); return ctx.skip();`
 
 ## Security Notes
 

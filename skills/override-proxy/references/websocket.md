@@ -8,10 +8,19 @@ override-proxy supports raw WebSocket traffic. It does not decode Socket.IO prot
 | ------------------------------------------------- | ---------------------------------------- |
 | Forward traffic unchanged                         | `direct`                                 |
 | Inspect, mutate, skip, or emit messages           | `bridge`                                 |
+| Use real upstream data plus injected local events | `bridge` with connection rules           |
 | Accept local-only client sockets without upstream | `mock`                                   |
 | Send welcome messages or heartbeats               | `bridge` or `mock` with connection rules |
 
 Start with `direct` when no message-level behavior is needed. Use `bridge` only when rules need `raw`, `text`, `json`, `jsonObject`, direction, or emit helpers.
+
+## Target URL Behavior
+
+WebSocket targets should usually be the upstream origin or base path. override-proxy appends the client request path after applying route rewrites. Do not repeat the route path inside `ws.target` unless the upstream intentionally expects both the target base path and the incoming request path.
+
+For example, a client request to `/ws/chat` with `target: "wss://chat.example.com"` connects upstream to `wss://chat.example.com/ws/chat`. Setting `target: "wss://chat.example.com/ws/chat"` would try `wss://chat.example.com/ws/chat/ws/chat`.
+
+Bridge mode forwards the client's query string to the upstream URL. This supports auth or session values passed as query parameters, such as `/ws/chat?session=demo`.
 
 ## Direct Proxy
 
@@ -29,7 +38,7 @@ export default defineConfig({
           http: false,
           ws: {
             mode: "direct",
-            target: "wss://chat.example.com/ws/chat",
+            target: "wss://chat.example.com",
           },
         },
       ],
@@ -87,7 +96,7 @@ export default defineConfig({
           http: false,
           ws: {
             mode: "bridge",
-            target: "wss://chat.example.com/ws/chat",
+            target: "wss://chat.example.com",
             rules: [PatchClientMessage, PatchUpstreamMessage],
           },
         },
@@ -164,6 +173,31 @@ ws: {
 
 Prefer `ctx.every()` and returned disposers over manual timers so cleanup happens when the connection closes.
 
+## Real Upstream Plus Injected Events
+
+Use bridge mode with `connectionRules` when the upstream should stay connected
+but clients also need local server-push events.
+
+```ts
+import { wsConnectionRule } from "@crescendolab/override-proxy";
+
+export const InjectReadyEvent = wsConnectionRule({
+  name: "inject-ready-event",
+  onConnect: (ctx) => {
+    ctx.client.send({ type: "proxy:ready" });
+  },
+});
+```
+
+```ts
+ws: {
+  mode: "bridge",
+  target: "wss://chat.example.com",
+  connectionRules: [InjectReadyEvent],
+  rules: [PatchClientMessage],
+}
+```
+
 ## Message Context
 
 Message rules receive:
@@ -203,5 +237,6 @@ Connection rules receive:
 | Message rule does not fire               | Confirm mode is `bridge` or `mock`; `direct` is transparent.                                   |
 | JSON rule never matches                  | Check whether the payload is valid text JSON and a non-array object before using `jsonObject`. |
 | Upstream is missing                      | Set route `target` or `ws.target`; mock mode intentionally has no upstream.                    |
+| Upstream returns 404                     | Check whether `ws.target` repeats the route path; the client request path is appended.         |
 | Heartbeat leaks timers                   | Use `ctx.every()` or register disposers with `ctx.dispose()`.                                  |
 | Socket.IO app behaves oddly              | Raw WebSocket rules do not parse Socket.IO frames; use a protocol-aware adapter if needed.     |
