@@ -1,5 +1,11 @@
 # @crescendolab/override-proxy
 
+## 0.1.4
+
+### Patch Changes
+
+- 2130516: Update the bundled skill to prefer agent-session disposable workspaces for unmaintained override-proxy setups, with portable fallbacks for other agent environments.
+
 ## 0.1.3
 
 ### Patch Changes
