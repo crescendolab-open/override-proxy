@@ -1,6 +1,6 @@
 ---
 name: override-proxy
-description: Install, build, modify, debug, and validate override-proxy local mock/proxy setups. Use when Codex needs to add override-proxy as a project-local devDependency, create or edit override-proxy config files, author HTTP rules with rule(), configure route-scoped proxy targets or rewrites, add raw WebSocket direct/bridge/mock rules, troubleshoot matching/proxy/CORS issues, or work inside the @crescendolab/override-proxy source checkout.
+description: Install, build, modify, debug, and validate override-proxy local mock/proxy setups. Use when an agent needs a disposable or repository-maintained override-proxy workspace, config files, HTTP rules with rule(), route-scoped proxy targets or rewrites, raw WebSocket direct/bridge/mock rules, matching/proxy/CORS troubleshooting, or work inside the @crescendolab/override-proxy source checkout.
 ---
 
 # override-proxy
@@ -12,12 +12,13 @@ Use this skill to work with `@crescendolab/override-proxy`, an override-first lo
 1. Identify the operating context before editing.
    - In an app consuming the package, import helpers from `@crescendolab/override-proxy`.
    - In the source checkout, read `AGENTS.md`, `README.md`, and `docs/TOOLS.md` if present, then follow local imports such as `./config.js` and `./utils.js` before build output exists.
-2. Choose the project-local install or source-checkout path before assuming the CLI or package import is available.
+2. Choose the workspace and install path before assuming the CLI or package import is available.
    - Read `references/installation.md` when setup is missing, unclear, or user preference matters.
-   - For consuming apps, install `@crescendolab/override-proxy` as a devDependency and run the CLI through the project's package manager, such as `pnpm exec override-proxy`.
+   - Use a repository-maintained setup when one exists. Otherwise, keep agent-created setup in a disposable workspace selected by the location precedence in `references/installation.md`.
+   - Install `@crescendolab/override-proxy` in the selected workspace and run the CLI through that workspace's package manager, such as `pnpm exec override-proxy`.
    - Do not recommend global or ephemeral CLI runners unless the user explicitly asks for that tradeoff and accepts that config imports still need a local dependency.
 3. Keep config as the source of truth.
-   - Create or edit `override-proxy.config.ts` or a local ignored variant.
+   - Create or edit `override-proxy.config.ts` in the selected workspace; use a repository-local ignored variant only when that fallback was selected.
    - Import rule values explicitly into config; do not add runtime directory scanning, registry scripts, folder toggles, or implicit rule discovery.
 4. Add the smallest rule/config change that satisfies the request.
    - Prefer one concern per rule module.
@@ -32,7 +33,7 @@ Use this skill to work with `@crescendolab/override-proxy`, an override-first lo
 
 ## Load References
 
-- Read `references/installation.md` for project-local devDependency and source-checkout setup decisions.
+- Read `references/installation.md` for workspace location, local dependency, and source-checkout setup decisions.
 - Read `references/config-and-rules.md` for config shape, HTTP rule recipes, route matching, rewrites, env, validation, and troubleshooting.
 - Read `references/websocket.md` when adding or debugging raw WebSocket direct, bridge, mock, message-rule, or connection-rule behavior.
 - If modifying the override-proxy source repository, prefer the repo's current docs and tests over this skill when they conflict.

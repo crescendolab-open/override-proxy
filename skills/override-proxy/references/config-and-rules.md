@@ -2,9 +2,9 @@
 
 ## Quick Local Setup
 
-Before authoring config, use the project-local devDependency path from
-`installation.md` so `override-proxy.config.ts` can import helpers from the
-project:
+Before authoring config, choose the owning workspace with `installation.md`.
+Install the dependency there so `override-proxy.config.ts` can import helpers
+from the same dependency graph:
 
 ```bash
 pnpm install -D @crescendolab/override-proxy
